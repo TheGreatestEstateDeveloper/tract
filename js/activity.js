@@ -59,7 +59,6 @@
   }
   function firmOf(it) { return it.firm && !(it.match && it.match.strength === "weak" && !state.weak) ? it.firm : null; }
 
-  function sinceDate() { var d = new Date(T.NOW); d.setDate(d.getDate() - (+state.days)); return d.toISOString().slice(0, 10); }
 
   // ---------------------------------------------------------------- loading
   async function caseFilings(fips, loc, since) {
@@ -152,24 +151,49 @@
     });
   }
 
-  async function load() {
-    var key = state.days;
+  // All activity for a time range (cached per range), shared by this view and the firm pages
+  function getItems(days) {
+    var key = String(days);
     if (!cache[key]) {
-      var since = sinceDate();
+      var d0 = new Date(T.NOW); d0.setDate(d0.getDate() - (+days));
+      var since = d0.toISOString().slice(0, 10);
       var targets = REG.order.filter(function (f) { var l = REG.byFips[f]; return l && (l.cases || (l.parcel && l.ownerSearch)); });
-      progress = { done: 0, total: targets.length };
+      if (key === state.days) progress = { done: 0, total: targets.length };
       cache[key] = Promise.all(targets.map(async function (fips) {
         var loc = REG.byFips[fips];
         var res = await Promise.all([caseFilings(fips, loc, since).catch(function () { return []; }), landBuys(fips, loc, since).catch(function () { return []; })]);
-        progress.done++;
-        if (active && !items) renderStatus();
+        if (key === state.days && progress) { progress.done++; if (active && !items) renderStatus(); }
         return res[0].concat(res[1]);
       })).then(function (all) { return [].concat.apply([], all).sort(function (a, b) { return b.date - a.date; }); });
     }
+    return cache[key];
+  }
+
+  async function load() {
     items = null;
     render();
-    items = await cache[key];
+    items = await getItems(state.days);
     if (active) render();
+  }
+
+  // One firm's last year, for its company page: lots bought, counties, open cases and communities
+  async function firmSummary(key) {
+    var all = await getItems("365");
+    var mine = all.filter(function (it) { return it.firm && it.firm.key === key && !(it.match && it.match.strength === "weak"); });
+    var land = mine.filter(function (it) { return it.kind === "land"; });
+    var filings = mine.filter(function (it) { return it.kind === "filing"; });
+    var counties = {}, communities = {};
+    mine.forEach(function (it) { counties[it.county] = (counties[it.county] || 0) + (it.count || 1); });
+    land.forEach(function (it) { if (it.sub) communities[it.sub] = (communities[it.sub] || 0) + it.count; });
+    filings.forEach(function (it) { var n = clean(it.m.name) || clean(it.m.alt); if (n) communities[n] = communities[n] || 0; });
+    var open = filings.filter(function (it) { return !/approved|closed|complete|withdrawn|denied|expired|final|issued/i.test(clean(it.m.status)); });
+    return {
+      lots: land.reduce(function (s, it) { return s + it.count; }, 0),
+      spent: land.reduce(function (s, it) { return s + (it.price || 0); }, 0),
+      counties: Object.keys(counties).sort(function (a, b) { return counties[b] - counties[a]; }).map(function (c) { return c + " (" + counties[c] + ")"; }),
+      communities: Object.keys(communities).sort(function (a, b) { return communities[b] - communities[a]; }),
+      filings: filings, open: open, land: land
+    };
   }
 
   function filtered() {
@@ -309,6 +333,7 @@
     onHide: function () { active = false; M.map.removeLayer(layer); }
   };
   T.activity = {
+    firmSummary: firmSummary,
     openFirm: function (key) { state.firm = key; state.fips = ""; if (active) { if (!items) load(); else render(); } },
     openCounty: function (fips) { state.fips = fips; state.firm = ""; if (active) { if (!items) load(); else render(); } }
   };

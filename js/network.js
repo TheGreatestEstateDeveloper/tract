@@ -308,9 +308,36 @@
       !c.ll ? h("button", { type: "button", class: "btn small", onclick: function () { setCompanyLocation(c); } }, u.icon("pin"), "Set office location") : null));
     el.append(mine);
 
-    if (T.activity && c.firmKey) el.append(h("section", { class: "block" }, h("h3", { class: "sec" }, "What they're doing"),
-      h("p", { class: "sub" }, "Rezonings, site plans and land in their name across the counties that publish them."),
-      h("div", { class: "btn-row" }, h("button", { type: "button", class: "btn primary small", onclick: function () { T.show("activity"); T.activity.openFirm(c.firmKey); } }, u.icon("activity"), "Open " + c.short + " activity"))));
+    if (T.activity && c.firmKey) {
+      var act = h("section", { class: "block" }, h("h3", { class: "sec" }, "What they're doing (last 12 months)"), u.loading("Reading county records"));
+      el.append(act);
+      var firmKey = c.firmKey;
+      T.activity.firmSummary(firmKey).then(function (s) {
+        if (!state.page || state.page.id !== "firm:" + firmKey) return;
+        while (act.childNodes.length > 1) act.removeChild(act.lastChild);
+        act.append(h("div", { class: "stats" },
+          u.stat(String(s.lots), "Lots and parcels bought"),
+          u.stat(s.spent ? u.money(s.spent) : "–", "Spent on land (deeds split per lot)"),
+          u.stat(String(s.open.length), "Open cases"),
+          u.stat(String(s.filings.length), "Filings")));
+        act.append(u.kv([
+          ["Counties", s.counties.join(", ") || "None found"],
+          ["Communities", s.communities.slice(0, 12).join(", ") || null]
+        ]));
+        var recent = s.open.concat(s.land).sort(function (a, b) { return b.date - a.date; }).slice(0, 6);
+        if (recent.length) {
+          var rl = h("div", { class: "list" });
+          recent.forEach(function (it) {
+            rl.append(h("div", { class: "item static" },
+              h("div", { class: "t" }, h("span", { class: "pill " + (it.kind === "land" ? "brass" : "blue") }, it.kind === "land" ? (it.count > 1 ? "Lots" : "Land") : u.clean(it.m.number) || "Case"), it.title),
+              h("div", { class: "m" }, [u.dateFmt(it.date), it.county, it.kind === "filing" ? u.clean(it.m.status) : ""].filter(Boolean).join(" · "))));
+          });
+          act.append(rl);
+        }
+        if (!s.lots && !s.filings.length) act.append(h("div", { class: "empty" }, "Nothing under their names in the last year. They may buy through project LLCs or file through engineers."));
+      }).catch(function () { while (act.childNodes.length > 1) act.removeChild(act.lastChild); act.append(h("div", { class: "empty" }, "Couldn't read county records just now.")); });
+      el.append(h("div", { class: "btn-row" }, h("button", { type: "button", class: "btn primary small", onclick: function () { T.show("activity"); T.activity.openFirm(c.firmKey); } }, u.icon("activity"), "See it all on the map")));
+    }
 
     if (f) {
       if (f.summary) el.append(h("section", { class: "block" }, h("h3", { class: "sec" }, "What they do in Virginia"), u.prose(f.summary)));

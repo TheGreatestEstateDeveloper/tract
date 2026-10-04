@@ -77,5 +77,7 @@ A scheduled task runs Monday mornings (about 6:56 a.m. Eastern). It checks count
 - Home counts are rough ranges: R-number codes where the county uses them (`zoningDensity: "rn"`: Fairfax, Loudoun, Prince William), otherwise keywords in the district and plan names. No ordinance lot-size math.
 - Assessed land vs sales compares the parcel's assessed land per acre with vacant sales within 2 miles in the last 5 years, using sales between a third and three times its size when there are at least two. Only counties with sale prices and building values in GIS (not Loudoun, Prince William, Stafford, Suffolk, Hanover).
 - Assemblages in Sites group parcels by owner name (punctuation removed), counting parcels of 1 acre or more toward the minimum. Owners spelled differently on different deeds won't group, and counties cap a query at 1,000 parcels, so zoom in for dense areas.
+- Sellers in Activity only show where a county publishes the grantor (James City so far).
+- Firm pages summarize the last 12 months from the same Activity data (strong and medium matches only), so the first open of a firm page reads every county and takes several seconds.
 - Some county map servers are slow to draw (Prince William's zoning export has taken 9+ seconds); the map shows a "Drawing ..." note meanwhile.
 - The app name and logo are still provisional (the owner chose to decide later).
