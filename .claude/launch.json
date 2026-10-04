@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tract-local",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "const h=require('http'),fs=require('fs'),p=require('path');const T={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.svg':'image/svg+xml','.webmanifest':'application/manifest+json'};h.createServer((q,s)=>{let u=decodeURIComponent(q.url.split('?')[0]);if(u.endsWith('/'))u+='index.html';const f=p.join(process.cwd(),u);fs.readFile(f,(e,d)=>{if(e){s.writeHead(404);return s.end('not found')}s.writeHead(200,{'Content-Type':T[p.extname(f)]||'application/octet-stream','Cache-Control':'no-store'});s.end(d)})}).listen(8765)"],
+      "port": 8765
+    }
+  ]
+}

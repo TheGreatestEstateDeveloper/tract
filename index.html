@@ -4,57 +4,83 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Tract</title>
-<meta name="description" content="Virginia parcels, owners, values, zoning, rezoning cases and builder intelligence.">
-<meta name="theme-color" content="#14281F">
+<meta name="description" content="Virginia parcels, owners, values, zoning, rezoning cases, builder activity and your network.">
+<meta name="theme-color" content="#14213D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Tract">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
+<link rel="preconnect" href="https://vginmaps.vdem.virginia.gov" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-<div id="app" class="app">
-  <div id="map" class="map" role="application" aria-label="Map of Virginia parcels"></div>
+<div id="app" class="app" data-view="map">
 
-  <header class="topbar">
-    <form id="search-form" class="search" role="search" autocomplete="off">
-      <span class="search-mark" aria-hidden="true"></span>
-      <input id="search" type="search" placeholder="Address, place, or owner: NAME" aria-label="Search an address, place, coordinates, or owner name" enterkeyhint="search">
-      <button type="submit" class="search-go" aria-label="Search">Go</button>
-    </form>
-    <div class="map-tools">
-      <button type="button" id="btn-locate" class="tool" aria-label="Go to my location" title="My location">◎</button>
-      <button type="button" id="btn-basemap" class="tool" aria-label="Switch to satellite" title="Satellite / streets">⧉</button>
+  <nav class="rail" aria-label="Sections">
+    <a class="brand" href="#map" aria-label="Tract, show the map">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><path class="brand-lot" d="M14 44 L20 18 L44 14 L50 36 L30 50 Z"/><circle class="brand-pin" cx="20" cy="18" r="4.5"/></svg>
+    </a>
+    <div class="nav-main">
+      <button type="button" class="nav-btn" data-view="map" data-icon="map"><span>Map</span></button>
+      <button type="button" class="nav-btn" data-view="sites" data-icon="target"><span>Sites</span></button>
+      <button type="button" class="nav-btn" data-view="network" data-icon="network"><span>Network</span></button>
+      <button type="button" class="nav-btn" data-view="activity" data-icon="activity"><span>Activity</span></button>
+      <button type="button" class="nav-btn" data-view="saved" data-icon="bookmark"><span>Saved</span></button>
     </div>
-    <div id="search-results" class="search-results" hidden></div>
-  </header>
+    <button type="button" class="nav-btn nav-settings" data-view="settings" data-icon="settings"><span>Settings</span></button>
+  </nav>
 
-  <aside id="panel" class="panel" data-state="half" aria-label="Details">
-    <button type="button" id="panel-handle" class="panel-handle" aria-label="Resize panel"><span></span></button>
-    <nav class="tabs" role="tablist">
-      <button type="button" role="tab" class="tab" data-tab="parcel" aria-selected="true">Parcel</button>
-      <button type="button" role="tab" class="tab" data-tab="sites">Sites</button>
-      <button type="button" role="tab" class="tab" data-tab="firms">Firms</button>
-      <button type="button" role="tab" class="tab" data-tab="saved">Saved</button>
-      <button type="button" role="tab" class="tab" data-tab="more">More</button>
-    </nav>
-    <div class="panel-body">
-      <section id="tab-parcel" class="tabpane" role="tabpanel"></section>
-      <section id="tab-sites" class="tabpane" role="tabpanel" hidden></section>
-      <section id="tab-firms" class="tabpane" role="tabpanel" hidden></section>
-      <section id="tab-saved" class="tabpane" role="tabpanel" hidden></section>
-      <section id="tab-more" class="tabpane" role="tabpanel" hidden></section>
+  <aside id="side" class="side" data-state="half" aria-label="Panel">
+    <button type="button" id="side-handle" class="sheet-handle" aria-label="Resize panel"><span></span></button>
+    <button type="button" id="side-collapse" class="side-collapse" aria-label="Hide panel" title="Hide panel"></button>
+    <div id="side-body" class="side-body">
+      <section id="view-map" class="view" hidden></section>
+      <section id="view-sites" class="view" hidden></section>
+      <section id="view-network" class="view" hidden></section>
+      <section id="view-activity" class="view" hidden></section>
+      <section id="view-saved" class="view" hidden></section>
+      <section id="view-settings" class="view" hidden></section>
     </div>
   </aside>
 
-  <div id="layer-bar" class="layer-bar" hidden></div>
+  <main id="stage" class="stage">
+    <div id="map" class="map" role="application" aria-label="Map of Virginia"></div>
+
+    <header class="topbar">
+      <div class="search-wrap">
+        <form id="search-form" class="search" role="search" autocomplete="off">
+          <span class="search-icon" data-icon="search"></span>
+          <input id="search" type="search" placeholder="Address, owner:, company, person or county" aria-label="Search addresses, owners, companies, people and counties" enterkeyhint="search">
+        </form>
+        <div id="search-results" class="search-results" hidden></div>
+      </div>
+      <div class="map-tools">
+        <button type="button" id="btn-layers" class="tool" data-icon="layers" aria-label="Layers" title="Layers"></button>
+        <button type="button" id="btn-measure" class="tool" data-icon="ruler" aria-label="Measure distance and area" title="Measure"></button>
+        <button type="button" id="btn-locate" class="tool" data-icon="locate" aria-label="Go to my location" title="My location"></button>
+        <button type="button" id="btn-settings" class="tool phone-only" data-icon="settings" aria-label="Settings" title="Settings"></button>
+      </div>
+    </header>
+
+    <div id="map-status" class="map-status" aria-hidden="true"></div>
+    <div id="layer-busy" class="layer-busy" role="status" hidden></div>
+
+    <aside id="identify" class="identify" data-state="half" aria-label="Parcel report" hidden>
+      <button type="button" id="identify-handle" class="sheet-handle" aria-label="Resize parcel report"><span></span></button>
+      <button type="button" id="identify-close" class="close-x" aria-label="Close parcel and show the whole map" title="Close (Esc)" data-icon="x"></button>
+      <div id="identify-body" class="identify-body"></div>
+    </aside>
+  </main>
+
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </div>
 
@@ -62,6 +88,15 @@
 <script src="https://unpkg.com/esri-leaflet@3.0.19/dist/esri-leaflet.js"></script>
 <script src="js/localities.js"></script>
 <script src="js/firms.js"></script>
+<script src="js/core.js"></script>
+<script src="js/map.js"></script>
+<script src="js/parcel.js"></script>
+<script src="js/search.js"></script>
+<script src="js/network.js"></script>
+<script src="js/activity.js"></script>
+<script src="js/sites.js"></script>
+<script src="js/saved.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/app.js"></script>
 <script>
   if ("serviceWorker" in navigator) {
