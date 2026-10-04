@@ -19,6 +19,10 @@
 
   function google(q) { return "https://www.google.com/search?q=" + encodeURIComponent(q); }
 
+  // Hampton Roads Planning District Commission: one future land use layer for 18 localities (2023 compilation of each comp plan).
+  var HRPDC_PLAN = { url: "https://services3.arcgis.com/IFfZzsUkSirJaEqg/arcgis/rest/services/Hampton_Roads_Future_Land_Use_2023/FeatureServer/2",
+    label: "Future land use (HRPDC regional compilation, 2023)", code: "LocalLU", alt: "MinLUClass", link: "CPSite", extra: { adopted: "CPAdptYr" }, kind: "feature" };
+
   var L = {};
 
   // ---------------- Northern Virginia ----------------
@@ -46,7 +50,15 @@
       { label: "Zoning applications", url: "https://services1.arcgis.com/ioennV6PpG5Xodq0/ArcGIS/rest/services/Zoning_Projects_view/FeatureServer/0", kind: "feature",
         f: { number: "PROJECT_IDENTIFIER", name: "APPLICATION_NAME", desc: "DESCRIPTION", status: "STATUS" } },
       { label: "Zoning cases since 2000", url: "https://services1.arcgis.com/ioennV6PpG5Xodq0/ArcGIS/rest/services/Zoning_Cases_Post_2000/FeatureServer/0", kind: "feature",
-        f: { number: "CASE_NUMBER", status: "STATUS", toZone: "ZONECODE", proffer: "PROFFER" } }
+        f: { number: "CASE_NUMBER", status: "STATUS", toZone: "ZONECODE", proffer: "PROFFER" } },
+      { label: "Zoning applications (PLUS)", url: "https://services1.arcgis.com/ioennV6PpG5Xodq0/ArcGIS/rest/services/PLUS_Zoning_Applications/FeatureServer/0", kind: "feature",
+        f: { number: "RECORDID", applicant: "APPLICANT", type: "APPTYPEALIAS", status: "RECORD_STATUS", date: "ACCEPTED_DATE", desc: "WORK_DESCRIPTION", link: "LINK_URL" } },
+      { label: "Site plans and subdivisions (PLUS)", url: "https://services1.arcgis.com/ioennV6PpG5Xodq0/ArcGIS/rest/services/Site_Records_PLUS/FeatureServer/0", kind: "feature",
+        f: { number: "RECORDID", name: "PROJECT_NAME", type: "APPTYPEALIAS", status: "RECORD_STATUS", date: "SUBMITTED_DATE", link: "LINK_URL" } }
+    ],
+    areas: [
+      { label: "Agricultural and forestal district", url: "https://services1.arcgis.com/ioennV6PpG5Xodq0/ArcGIS/rest/services/Agricultural_and_Forestal_Districts/FeatureServer/0",
+        show: function (a) { return [a.DISTRICT_NAME, a.EXPIRATION_DATE ? "expires " + new Date(a.EXPIRATION_DATE).getFullYear() : ""].filter(Boolean).join(", "); } }
     ],
     links: {
       assessor: function (id) { return "https://icare.fairfaxcounty.gov/ffxcare/Datalets/Datalet.aspx?mode=profileall&UseSearch=no&pin=" + encodeURIComponent(id); },
@@ -71,7 +83,9 @@
       { label: "Legislative applications", url: "https://logis.loudoun.gov/gis/rest/services/COL/PlanningZoning/MapServer", layer: 3, kind: "map",
         f: { number: "LA_APPLICATION_NUMBER", name: "LA_PROJECT_NAME", alt: "LA_APPLICATION_NAME", type: "LA_APPLICATION_TYPE", date: "LA_APPROVAL_DATE", desc: "LA_DESCRIPTION" } },
       { label: "Approved rezonings (ZMAP)", url: "https://logis.loudoun.gov/gis/rest/services/COL/Zoning/MapServer", layer: 5, kind: "map",
-        f: { number: "ZO_PROJ_NUM", toZone: "ZO_ZONE", date: "ZO_ZONE_DATE" } }
+        f: { number: "ZO_PROJ_NUM", toZone: "ZO_ZONE", date: "ZO_ZONE_DATE" } },
+      { label: "Site plans and subdivisions (LOLA)", url: "https://logis.loudoun.gov/gis/rest/services/Projects/LOLA_DATA/MapServer", layer: 0, kind: "map",
+        f: { number: "PlanNumber", name: "PlanName", type: "PlanType", status: "PlanStatus", date: "PlanApplicationDate", desc: "PlanDescription" } }
     ],
     links: {
       assessor: function (id) { return "https://reparcelasmt.loudoun.gov/pt/Datalets/Datalet.aspx?mode=profileall&UseSearch=no&pin=" + encodeURIComponent(id); },
@@ -99,6 +113,17 @@
       { label: "Pending planning cases", url: "https://gisweb.pwcva.gov/arcgis/rest/services/CountyMapper/LandDevelopment/MapServer", layer: 2, kind: "map",
         f: { number: "PlanningCaseNumber", name: "PlanningCaseName", type: "PlanningCaseType", status: "status", date: "TransmittalDate", desc: "pln_descrip_prop", acres: "GISAcreage", link: "StaffReportLink" } }
     ],
+    // The county's own build-out analysis: how many homes the plan allows on developable land, and extra lots on A-1 parcels
+    areas: [
+      { label: "County build-out estimate", url: "https://gisweb.pwcva.gov/arcgis/rest/services/Planning/Build_Out_Analysis/MapServer/0",
+        show: function (a) {
+          var lo = a.MinDU, hi = a.MaxDU, ac = a.DevResAc;
+          if (!(hi > 0)) return null;
+          return Math.round(lo) + " to " + Math.round(hi) + " homes" + (ac > 0 ? " on " + ac.toFixed(1) + " developable acres" : "") + (a.LRLU ? " (" + a.LRLU + ")" : "");
+        } },
+      { label: "Extra lots under A-1 zoning", url: "https://gisweb.pwcva.gov/arcgis/rest/services/Planning/Build_Out_Analysis/MapServer/2",
+        show: function (a) { return a.AdditionalLots > 0 ? a.AdditionalLots + " more lot" + (a.AdditionalLots > 1 ? "s" : "") + " by right (county estimate)" : null; } }
+    ],
     links: {
       assessor: function () { return "https://www.pwcva.gov/department/real-estate-assessments"; },
       assessorLabel: "Assessed values (Real Estate Assessments)",
@@ -113,9 +138,19 @@
     name: "Stafford County", region: "Northern Virginia", depth: "partial",
     parcel: {
       url: "https://services1.arcgis.com/qKiA6JuCrE2l72iL/arcgis/rest/services/Parcels/FeatureServer/0",
-      idField: "PRCLID", f: { id: "PRCLID", address: "FULLADD", use: "LUGROUP", units: "EXDU" }
+      idField: "PRCLID", f: { id: "PRCLID", address: "FULLADD", units: "EXDU" }
     },
     zoning: { url: "https://services1.arcgis.com/qKiA6JuCrE2l72iL/arcgis/rest/services/Zoning/FeatureServer/0", code: "ZONE1", extra: { secondZone: "ZONE2", conditions: "COND_PRMT" }, kind: "feature" },
+    // Stafford stores the plan designation in a field named VERIFIED
+    plan: { url: "https://services1.arcgis.com/qKiA6JuCrE2l72iL/arcgis/rest/services/Landuse/FeatureServer/0", label: "Comprehensive plan land use", code: "VERIFIED", kind: "feature" },
+    cases: [
+      { label: "Rezonings (reclassifications)", url: "https://services1.arcgis.com/qKiA6JuCrE2l72iL/arcgis/rest/services/Pending_Developments_Applications_Map_WFL1/FeatureServer/2", kind: "feature",
+        f: { number: "APNO", name: "PROJNAME", type: "APTYPE", status: "MILESTONE", date: "APDTTM", desc: "Project_description", link: "WEB_LINK", devType: "DEV_TYPE" } },
+      { label: "Conditional use permits", url: "https://services1.arcgis.com/qKiA6JuCrE2l72iL/arcgis/rest/services/Pending_Developments_Applications_Map_WFL1/FeatureServer/1", kind: "feature",
+        f: { number: "APNO", name: "PROJNAME", type: "APTYPE", status: "MILESTONE", date: "APDTTM", desc: "Project_description", link: "WEB_LINK", devType: "DEV_TYPE" } },
+      { label: "Comp plan compliance and amendments", url: "https://services1.arcgis.com/qKiA6JuCrE2l72iL/arcgis/rest/services/Pending_Developments_Applications_Map_WFL1/FeatureServer/0", kind: "feature",
+        f: { number: "APNO", name: "PROJNAME", type: "APTYPE", status: "MILESTONE", date: "APDTTM", desc: "Project_description", link: "WEB_LINK", devType: "DEV_TYPE" } }
+    ],
     links: {
       assessor: function () { return "https://staffordcountyva.gov/government/departments_r-z/commissioner_of_the_revenue/real_estate_assessment.php"; },
       assessorLabel: "Owner and values (Commissioner of the Revenue)",
@@ -123,7 +158,7 @@
       landRecords: google("Stafford County Virginia circuit court land records remote access"),
       planning: "https://staffordcountyva.gov/government/departments_r-z/planning_and_zoning/index.php"
     },
-    notes: "Stafford's public parcel layer has addresses and land use but not owners or values."
+    notes: "Stafford doesn't publish owner names or assessed values as open data. The Commissioner of the Revenue link has both."
   };
 
   L["51061"] = {
@@ -138,6 +173,15 @@
     ownerSearch: true,
     nearby: { mode: "fields" },
     zoning: { url: "https://services.arcgis.com/oAoeYJ1kqmAwcEC2/arcgis/rest/services/Zoning_Districts_DL/FeatureServer/0", code: "ZONECLASS", name: "ZONEDESC", kind: "feature" },
+    cases: [
+      { label: "Land development applications (county file last updated June 2023)", url: "https://services.arcgis.com/oAoeYJ1kqmAwcEC2/arcgis/rest/services/Planning_Land_Development_Applications_WFL1/FeatureServer/0", kind: "feature",
+        f: { number: "PlanNumber", name: "ProjectName", type: "PlanType", status: "PlanStatus", date: "ApplicationDate", desc: "WorkClass", link: "URL" } }
+    ],
+    // Fauquier steers growth into service districts (planned public water and sewer); outside them is rural.
+    areas: [
+      { label: "Service district", url: "https://services.arcgis.com/oAoeYJ1kqmAwcEC2/arcgis/rest/services/Service_Districts_DL/FeatureServer/0",
+        show: function (a) { return a.DISTRICTNA || a.SVCDISTRIC || "Inside a service district"; }, none: "Outside the service districts (rural area)" }
+    ],
     links: {
       assessor: function () { return "https://www.fauquiercounty.gov/government/departments-h-z/commissioner-of-the-revenue/real-estate"; },
       assessorLabel: "Commissioner of the Revenue, real estate",
@@ -195,34 +239,73 @@
     }
   };
 
+  var HAN = "https://services2.arcgis.com/sKZWgJlU6SekCzQV/arcgis/rest/services/";
   L["51085"] = {
-    name: "Hanover County", region: "Fredericksburg to Richmond", depth: "basic",
-    links: {
-      gis: "https://www.hanovercounty.gov/1022/GIS",
-      landRecords: google("Hanover County Virginia circuit court land records"),
-      assessor: function () { return "https://www.hanovercounty.gov/347/Assessor"; },
-      assessorLabel: "Hanover County Assessor"
-    }
-  };
-
-  L["51087"] = {
-    name: "Henrico County", region: "Fredericksburg to Richmond", depth: "deep", stale: "Henrico's open parcel file is a March 2022 snapshot. Check current owner and values on the county site.",
+    name: "Hanover County", region: "Fredericksburg to Richmond", depth: "deep",
     parcel: {
-      url: "https://services.arcgis.com/LxWK4CxNTBBlLshT/arcgis/rest/services/Henrico_County_Tax_Parcels_0322/FeatureServer/0",
+      url: HAN + "Hanover_Parcels/FeatureServer/0",
       idField: "GPIN",
-      f: { id: "GPIN", owner: "OWNER_CURRENT", mail1: "MAILING_ADDRESS_01", mail2: "MAILING_ADDRESS_02", mailCity: "MAILING_ADDRESS_03", address: "FULL_ADDRESS",
-           acres: "PARCEL_ACREAGE", land: "LAND_VALUE_CURRENT", impr: "IMPROVEMENTS_VALUE_CURRENT", saleDate: "LAST_SALE_DATE", salePrice: "LAST_SALE_PRICE",
-           deedBook: "DEED_BOOK", deedPage: "DEED_PAGE", yearBuilt: "YEAR_BUILT", livingArea: "SQFT_FINISHED", use: "USE_DESCRIPTION", subdivision: "SUBDIVISION_NAME", water: "WATER_SEWER_DESCRIPTION" }
+      f: { id: "GPIN", owner: "OWN_NAME1", owner2: "OWN_NAME2", mail1: "MAIL_ADDRESS", mailCity: "MAIL_CITY", mailState: "MAIL_STATE", mailZip: "MAIL_ZIP",
+           addrNo: "ADDRESS", addrPre: "ST_PREFIX", addrStreet: "ST_NAME", addrSuffix: "ST_TYPE", addrPost: "ST_SUFFIX",
+           acres: "LOT_ACRES", land: "LAND_VALUE", impr: "IMPROVEMENTS_VALUE", deedBook: "DEED_BOOK_NUMBER", deedPage: "DEED_BOOK_PAGE",
+           subdivision: "SUBDIVISION", legal: "LEGAL_DESCRIPTION", district: "MAGISTERIAL_DISTRICT" }
     },
     ownerSearch: true,
     nearby: { mode: "fields" },
+    zoning: { url: HAN + "Zoning/FeatureServer/0", code: "CLASS", extra: { rezoningCase: "PERMIT" }, kind: "feature" },
+    plan: { url: HAN + "Land_Use/FeatureServer/66", label: "General land use plan", code: "LandUse", link: "DescriptionURL", kind: "feature" },
+    cases: [
+      { label: "Land use cases and site plans", url: HAN + "Active_Land_Use_Cases_feature_layer/FeatureServer/0", kind: "feature",
+        f: { number: "project_no", name: "project_name", type: "projecttype", status: "status", date: "applied", applicant: "applicant_name", developer: "developer_name", caseOwner: "owner_name" } }
+    ],
+    areas: [
+      { label: "Suburban Service Area", url: HAN + "Suburban_Service_Area/FeatureServer/0",
+        show: function () { return "Inside (where the county plans public water, sewer and suburban growth)"; }, none: "Outside (rural area)" }
+    ],
+    links: {
+      gis: "https://data-hanovercounty.hub.arcgis.com/",
+      landRecords: google("Hanover County Virginia circuit court land records"),
+      assessor: function () { return "https://www.hanovercounty.gov/347/Assessor"; },
+      assessorLabel: "Hanover County Assessor (sales history)",
+      planning: "https://www.hanovercounty.gov/325/Planning"
+    },
+    notes: "Hanover publishes owner, values and deed reference in GIS but not sale prices. The assessor link has sales history."
+  };
+
+  var HEN = "https://portal.henrico.gov/mapping/rest/services/";
+  L["51087"] = {
+    name: "Henrico County", region: "Fredericksburg to Richmond", depth: "deep",
+    // Current county file (values, sales, deeds). Henrico doesn't publish owner names; the mailing address often
+    // names the owner's company ("C/O ..."). The old "0322" open file only holds about 700 county-owned parcels.
+    parcel: {
+      url: HEN + "Layers/Tax_Parcels_and_CAMA_Data_External/FeatureServer/0",
+      idField: "GPIN",
+      f: { id: "GPIN", address: "FULL_ADDRESS", acres: "PARCEL_ACREAGE", land: "LAND_VALUE_CURRENT", impr: "IMPROVEMENTS_VALUE_CURRENT", taxYear: "TAX_YEAR",
+           priorLand: "LAND_VALUE_PRIOR", priorImpr: "IMPROVEMENTS_VALUE_PRIOR", saleDate: "LAST_SALE_DATE", salePrice: "LAST_SALE_PRICE",
+           deedBook: "DEED_BOOK", deedPage: "DEED_PAGE", yearBuilt: "YEAR_BUILT", livingArea: "SQFT_FINISHED", use: "USE_DESCRIPTION", subdivision: "SUBDIVISION_NAME",
+           water: "WATER_SEWER_DESCRIPTION", legal: "LEGAL_DESCRIPTION", district: "MAGISTERIAL_DISTRICT_NAME" }
+    },
+    joins: [
+      { key: "GPIN", url: HEN + "GISViewerExternal/RealEstate/MapServer/0",
+        f: { mail1: "MAILING_ADDRESS_01", mail2: "MAILING_ADDRESS_02", mailCity: "MAILING_ADDRESS_03", mailZip: "MAILING_ADDRESS_04" } }
+    ],
+    nearby: { mode: "fields" },
+    zoning: { url: HEN + "Planning/Zoning/MapServer", layer: 0, code: "ZONE_NAME", name: "ZONING_DESC", link: "ZONING_CODE_URL", kind: "map" },
+    plan: { url: HEN + "PLN/Future_Land_Use_2045_External/FeatureServer/0", label: "Future land use (2045 plan)", code: "LANDUSE_ID", kind: "feature" },
+    cases: [
+      { label: "Planning cases", url: HEN + "Layers/Planning_Department_Cases/MapServer", layer: 0, kind: "map",
+        f: { number: "CASENO", type: "CASE_TYPE", desc: "COMMENTS" } },
+      { label: "Cases on upcoming agendas", url: HEN + "Planning/Cases_All/MapServer", layer: 0, kind: "map",
+        f: { number: "CASENO", type: "CASE_TYPE", applicant: "APPNAME", rep: "REPNAME", date: "agendate", desc: "CSM_DESCRIPTION" } }
+    ],
     links: {
       assessor: function () { return "https://henrico.gov/assessor/"; },
-      assessorLabel: "Henrico Real Estate Assessment",
+      assessorLabel: "Owner name (Henrico Real Estate Assessment)",
       gis: "https://henrico.gov/gis/",
       landRecords: google("Henrico County circuit court land records remote access"),
       planning: "https://henrico.gov/planning/"
-    }
+    },
+    notes: "Henrico publishes current values, sales and deeds but not owner names. The mailing address often names the owner's company (C/O lines); the assessment link shows the owner."
   };
 
   L["51041"] = {
@@ -267,6 +350,13 @@
         f: { land: "Land_Value", impr: "Improvement_Value", total: "Total_Value", saleDate: "Sales_Date", salePrice: "Sale_Price", deedBook: "Deed_Book", deedPage: "Deed_Page", instrument: "Document_Number" } }
     ],
     nearby: { mode: "join", values: 0, sales: 0 },
+    plan: HRPDC_PLAN,
+    cases: [
+      { label: "Planning Commission and City Council actions", url: "https://geo.vbgov.com/mapservices/rest/services/Planning_and_Development/Planning_and_Development/MapServer", layer: 1, kind: "map",
+        f: { number: "PLN_ID", name: "PROJ_NAME", applicant: "APPL_NAME", type: "PLN_TYPE", date: "DATE_SUB", approved: "APPR_DT", link: "DEEPLINK" } },
+      { label: "Site plans (Development Services Center)", url: "https://geo.vbgov.com/mapservices/rest/services/Planning_and_Development/Planning_and_Development/MapServer", layer: 6, kind: "map",
+        f: { number: "PLN_ID", name: "PROJ_NAME", applicant: "APPL_NAME", type: "PLN_TYPE", date: "DATE_SUB", approved: "APPR_DT", link: "DEEPLINK" } }
+    ],
     links: {
       assessor: function () { return "https://www.vbgov.com/government/departments/real-estate-assessor/Pages/default.aspx"; },
       assessorLabel: "Real Estate Assessor",
@@ -285,6 +375,8 @@
       f: { id: "PARNO", mapParcel: "MAP_PARCEL", address: "ADDRESS", acres: "CALCACREAGE", deedBook: "DEEDBK", deedPage: "DEEDPG", use: "PROPCLASS", legal: "LEGAL", transfer: "TRANSFER" }
     },
     zoning: { url: "https://gis.cityofchesapeake.net/mapping/rest/services/OpenData/OpenData/MapServer", layer: 26, code: "CLASS", extra: { rezoningCase: "APPNO", proffer: "PROFFERS", project: "PROJECT" }, kind: "map" },
+    plan: HRPDC_PLAN,
+    policy: { url: "https://gis.cityofchesapeake.net/mapping/rest/services/OpenData/OpenData/MapServer", layer: 27, label: "Planning area", code: "PLANAREA" },
     cases: [
       { label: "Development tracking", url: "https://gis.cityofchesapeake.net/mapping/rest/services/OpenData/OpenData/MapServer", layer: 9, kind: "map",
         f: { number: "APPLICATIO", name: "PROJECT_NA", type: "TYPE_", status: "RESULTS", fromZone: "ZONING_FRO", toZone: "ZONING_TO", units: "HOUSING_UN", date: "DATEOFAPPL", council: "CC_ACTION", link: "EBUILD_LINK" } }
@@ -298,14 +390,35 @@
     }
   };
 
+  var SUF = "https://suffolkgis.suffolk-va.net/hosting/rest/services/";
   L["51800"] = {
-    name: "Suffolk", region: "Hampton Roads", depth: "basic",
+    name: "Suffolk", region: "Hampton Roads", depth: "partial",
+    parcel: {
+      url: SUF + "Parcel_Viewer/Parcel_Landbook_Data/FeatureServer/0",
+      idField: "NTI_PROPTAXNUM",
+      f: { id: "NTI_PROPTAXNUM", account: "NTI_ASSACCOUNTNUM", owner: "OWNER", mail1: "MAILING_ADDRESS1", mail2: "MAILING_ADDRESS2", mail3: "MAILING_ADDRESS3",
+           mailCity: "MAILING_ADDRESS4", mailState: "MAILING_ADDRESS5", mailZip: "MAILING_ADDRESS6", addrNo: "NTI_STREETNUMBER", addrStreet: "NTI_STREETNAME", addrSuffix: "NTI_STREETMD",
+           acres: "Assr_Area", areaSqft: "PARCELSQFT", zoningCode: "ZONE_CLASS", subdivision: "SUBDIVISION", water: "WATER_SA", sewer: "SEWER_SA", rpa: "RPA_AREA",
+           familyTransfer: "NTI_PT_FAMILY_TRANS", useClass: "SW_CLASSIFICATION", district: "BORO_NAME" }
+    },
+    ownerSearch: true,
+    zoning: { url: SUF + "Zoning_Map/MapServer", layer: 11, code: "CODE", kind: "map" },
+    plan: { url: SUF + "Zoning_Map/MapServer", layer: 8, label: "Future land use (2045 plan)", code: "LandUse_2045", alt: "LandUse_Category_2045", kind: "map" },
+    policy: { url: SUF + "Zoning_Map/MapServer", layer: 3, label: "Growth area", code: "G_Area" },
+    cases: [
+      { label: "Rezonings with conditions", url: SUF + "Public_Website/Development_Restrictions/MapServer", layer: 0, kind: "map",
+        f: { number: "APPLICATION", type: "RESTRICTION_TYPE", date: "APPROVAL_DATE", desc: "Comment", ordinance: "Ordinance", link: "Document_Link" } },
+      { label: "Approved zoning by application", url: SUF + "Spatialest/Spatialest/FeatureServer/48", kind: "feature",
+        f: { number: "NTI_APPLICATION", toZone: "CODE" } }
+    ],
     links: {
       gis: "https://www.suffolkva.us/",
       landRecords: google("Suffolk Virginia circuit court land records"),
-      assessor: function () { return google("Suffolk Virginia real estate assessor parcel search"); },
-      assessorLabel: "Suffolk assessor search"
-    }
+      assessor: function () { return "https://www.suffolkva.us/239/Real-Estate-Assessor"; },
+      assessorLabel: "Values and sales (Real Estate Assessor)",
+      planning: "https://www.suffolkva.us/267/Planning-Community-Development"
+    },
+    notes: "Suffolk publishes owner, zoning and water and sewer service areas in GIS, but not assessed values or sale prices."
   };
 
   L["51700"] = {
@@ -350,8 +463,23 @@
     }
   };
 
+  // Hampton Roads localities covered by the regional future land use layer only (owner and values not added yet)
+  [["51710", "Norfolk"], ["51740", "Portsmouth"], ["51650", "Hampton"], ["51199", "York County"], ["51093", "Isle of Wight County"],
+   ["51073", "Gloucester County"], ["51735", "Poquoson"], ["51830", "Williamsburg"], ["51175", "Southampton County"], ["51181", "Surry County"], ["51620", "Franklin"]
+  ].forEach(function (x) {
+    L[x[0]] = {
+      name: x[1], region: "Hampton Roads", depth: "basic", plan: HRPDC_PLAN,
+      links: {
+        assessor: function () { return google(x[1] + " Virginia real estate assessment parcel search"); },
+        assessorLabel: x[1] + " assessment search",
+        landRecords: google(x[1] + " Virginia circuit court land records")
+      }
+    };
+  });
+
   // Ordered list for the coverage screen
-  var ORDER = ["51059", "51107", "51153", "51179", "51061", "51177", "51033", "51085", "51087", "51041", "51810", "51550", "51800", "51700", "51095"];
+  var ORDER = ["51059", "51107", "51153", "51179", "51061", "51177", "51033", "51085", "51087", "51041", "51810", "51550", "51800", "51700", "51095",
+    "51710", "51740", "51650", "51199", "51093", "51073", "51735", "51830", "51175", "51181", "51620"];
 
   window.TRACT_LOCALITIES = { VGIN: VGIN, byFips: L, order: ORDER, google: google };
 })();

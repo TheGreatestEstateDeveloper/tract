@@ -63,7 +63,8 @@
   }
   function dateFmt(v) { var d = toDate(v); if (!d || d.getFullYear() < 1901) return null; return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
   function median(a) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }); var m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
-  function clean(v) { if (v == null) return ""; var s = String(v).trim(); return /^(null|none|n\/a|0|unassigned|unknown)$/i.test(s) ? "" : s; }
+  function clean(v) { if (v == null) return ""; var s = String(v).trim(); return /^(<?null>?|none|n\/a|0+|unassigned|unknown|need address|[.,\s]+)$/i.test(s) ? "" : s; }
+  function yesNo(v) { var s = clean(v).toUpperCase(); return s === "Y" || s === "YES" || s === "T" || s === "TRUE" ? "Yes" : s === "N" || s === "NO" || s === "F" || s === "FALSE" ? "No" : clean(v); }
   function sq(s) { return String(s).replace(/'/g, "''"); }
   function toast(msg) { var t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 2600); }
   function loading(text) { return h("div", { class: "loading" }, text || "Loading"); }
@@ -103,6 +104,7 @@
     r.forEach(function (p) { x += p[0]; y += p[1]; });
     return [x / r.length, y / r.length];
   }
+  function geomCenter(g) { return !g ? null : g.x != null ? [g.x, g.y] : ringsCentroid(g.rings); }
   function pointInRings(pt, rings) {
     var inside = false;
     (rings || []).forEach(function (ring) {
@@ -160,6 +162,32 @@
     if (sqft && sqft > 0) { var calc = sqft / 43560, a = num(out.acres); if (a == null || a > calc * 3) out.acres = calc; }
     return out;
   }
+  // Code -> plain-English label, read from the layer's own map styling (so "SR1" shows as "Suburban Residential 1").
+  var labelCache = {};
+  function layerLabels(cfg) {
+    var u = layerUrl(cfg);
+    if (!labelCache[u]) {
+      labelCache[u] = fetch(u + "?f=json").then(function (r) { return r.json(); }).then(function (j) {
+        var out = {}, rd = j && j.drawingInfo && j.drawingInfo.renderer;
+        (rd && rd.uniqueValueInfos || []).forEach(function (u2) {
+          if (u2.value == null) return;
+          var val = String(u2.value), label = String(u2.label || "").trim();
+          // Drop a trailing "- (CODE)" that just repeats the code
+          var tail = label.lastIndexOf("(" + val + ")");
+          if (tail > 0 && tail + val.length + 2 === label.length) label = label.slice(0, tail).replace(/[\s-]+$/, "");
+          if (label && label.toUpperCase() !== val.toUpperCase()) out[val.toUpperCase()] = label;
+        });
+        return out;
+      }).catch(function () { return {}; });
+    }
+    return labelCache[u];
+  }
+  function withLabel(code, labels) {
+    var c = clean(code); if (!c || !labels) return c;
+    var l = labels[c.toUpperCase()];
+    return l ? c + " · " + l : c;
+  }
+
   // Numeric field expression for WHERE clauses (some counties store numbers as text).
   function nf(pl, field) {
     var text = pl.textNumbers === true || (pl.textFields && pl.textFields.indexOf(field) >= 0);
@@ -324,8 +352,27 @@
     if (loc.zoning) jobs.push(loadLayerAt(my, "zoning", loc.zoning));
     if (loc.plan) jobs.push(loadLayerAt(my, "plan", loc.plan));
     if (loc.policy) jobs.push(loadLayerAt(my, "policy", loc.policy));
+    if (loc.areas) jobs.push(loadAreas(my));
     if (loc.cases) jobs.push(loadCases(my));
     await Promise.all(jobs);
+  }
+
+  // Yes/no and value checks at the point: service districts, growth areas, county build-out estimates
+  async function loadAreas(my) {
+    var r = current;
+    r.areas = [];
+    sec("areas", "loading");
+    await Promise.all(r.loc.areas.map(async function (cfg, i) {
+      try {
+        var j = await atPoint(layerUrl(cfg), r.lng, r.lat);
+        var a = j.features && j.features[0] && j.features[0].attributes;
+        var text = a ? cfg.show(a) : cfg.none || null;
+        if (text) r.areas[i] = [cfg.label, text];
+      } catch (e) { /* skip one that fails */ }
+    }));
+    if (my !== token) return;
+    sec("areas", "done");
+    renderReport();
   }
 
   async function loadParcel(my) {
@@ -374,12 +421,21 @@
     var r = current;
     sec(key, "loading");
     try {
-      var j = await atPoint(layerUrl(cfg), r.lng, r.lat);
+      var res = await Promise.all([atPoint(layerUrl(cfg), r.lng, r.lat), layerLabels(cfg)]);
       if (my !== token) return;
-      r[key] = (j.features || []).map(function (x) { return x.attributes; });
+      r[key] = (res[0].features || []).map(function (x) { return x.attributes; });
+      r.labels = r.labels || {};
+      r.labels[key] = res[1];
       sec(key, "done");
     } catch (e) { if (my !== token) return; sec(key, "error"); }
     renderReport();
+  }
+
+  function pointInParcel(pt) {
+    var g = current && current.vgin && current.vgin.geometry;
+    if (!g) return false;
+    var polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+    return polys.some(function (p) { return pointInRings(pt, p); });
   }
 
   async function loadCases(my) {
@@ -392,8 +448,10 @@
         var j = await inEnvelope(layerUrl(cfg), env, { returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0003, resultRecordCount: 200 });
         (j.features || []).forEach(function (x) {
           var rings = x.geometry && x.geometry.rings;
-          var c = ringsCentroid(rings);
-          var onParcel = rings ? pointInRings([r.lng, r.lat], rings) : false;
+          var pt = x.geometry && x.geometry.x != null ? [x.geometry.x, x.geometry.y] : null;
+          var c = pt || ringsCentroid(rings);
+          // Polygon cases: does the case cover the tapped point? Point cases: is the point inside this parcel?
+          var onParcel = rings ? pointInRings([r.lng, r.lat], rings) : pt ? pointInParcel(pt) : false;
           var wide = false;
           if (rings && rings[0]) { var xs = rings[0].map(function (p) { return p[0]; }); wide = (Math.max.apply(null, xs) - Math.min.apply(null, xs)) > 0.15; }
           var m = mapAttrs(x.attributes, cfg.f);
@@ -517,6 +575,31 @@
     return lowZoning && denserPlan;
   }
 
+  function addrOf(m) {
+    if (clean(m.address) && !/^\d+$/.test(clean(m.address))) return clean(m.address);
+    var no = num(m.addrNo) > 0 ? String(num(m.addrNo)) : "";
+    var street = [clean(m.addrPre), clean(m.addrStreet), clean(m.addrSuffix), clean(m.addrPost)].filter(Boolean).join(" ").replace(/\s+/g, " ");
+    return street ? [no, street].filter(Boolean).join(" ") : "";
+  }
+
+  function waterSewerRow(m) {
+    var w = clean(m.water), s = clean(m.sewer);
+    if (!w && !s) return null;
+    var yw = yesNo(w), ys = yesNo(s), yn = /^(Yes|No)$/;
+    if (yn.test(yw) && (!s || yn.test(ys))) return ["Public water / sewer", "Water " + yw.toLowerCase() + (s ? ", sewer " + ys.toLowerCase() : "")];
+    return ["Water / sewer", [w, s].filter(Boolean).join(" / ")];
+  }
+
+  function closeParcel() {
+    token++;
+    current = null;
+    selectLayer.clearLayers();
+    try { history.replaceState(null, "", location.pathname); } catch (e) { /* ignore */ }
+    if (window.innerWidth < 900) panel.setAttribute("data-state", "peek");
+    renderReport();
+  }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && current && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) closeParcel(); });
+
   function renderReport() {
     var el = clear($("tab-parcel"));
     var r = current;
@@ -527,12 +610,13 @@
 
     var v = r.vgin, loc = r.loc, c = r.county || {}, j = r.join || {};
     var m = Object.assign({}, c, j); // merged county facts
-    var address = clean(m.address) || [clean(m.addrNo), clean(m.addrStreet), clean(m.addrSuffix)].filter(Boolean).join(" ");
+    var address = addrOf(m);
     var title = address || (clean(m.owner) ? clean(m.owner) : "Parcel " + (v.ptm || v.parcelId));
     var acres = num(m.acres);
 
     // Header
-    el.append(h("div", { class: "block" },
+    el.append(h("div", { class: "block report-head" },
+      h("button", { type: "button", class: "close-x", "aria-label": "Close parcel and show the whole map", title: "Close (Esc)", onclick: closeParcel }, "×"),
       h("div", { class: "eyebrow" }, (v.locality || "Virginia") + (loc ? " · " + loc.region : "")),
       h("h2", { class: "title" }, title),
       h("div", { class: "btn-row" },
@@ -550,16 +634,17 @@
       stat(acresFmt(acres != null ? acres : v.acresCalc), acres != null ? "Acres (county)" : "Acres (calculated)"),
       stat(money(land), "Land value"),
       stat(money(total), "Total assessed"),
-      stat(m.salePrice && num(m.salePrice) > 0 ? money(m.salePrice) : null, m.saleDate ? "Last sale · " + (dateFmt(m.saleDate) || "") : "Last sale")
+      stat(m.salePrice && num(m.salePrice) > 0 ? money(m.salePrice) : (dateFmt(m.saleDate) ? "$0 transfer" : null), dateFmt(m.saleDate) ? "Last sale · " + dateFmt(m.saleDate) : "Last sale")
     ));
 
     // Ownership
     var ownerBlock = h("div", { class: "block" }, h("h3", { class: "sec" }, "Ownership and title"));
     if (r.sections.parcel === "loading") ownerBlock.append(loading("Reading county records"));
-    var mail = [clean(m.mail1), clean(m.mail2), [clean(m.mailCity), clean(m.mailState), clean(m.mailZip)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    var mail = [clean(m.mail1), clean(m.mail2), clean(m.mail3), [clean(m.mailCity), clean(m.mailState), clean(m.mailZip)].filter(Boolean).join(" ")].filter(Boolean).join(", ");
     var deed = (clean(m.deedBook) || clean(m.deedPage)) ? "Book " + (clean(m.deedBook) || "?") + ", page " + (clean(m.deedPage) || "?") : (clean(m.deed) || null);
+    var ownerText = [clean(m.owner), clean(m.owner2)].filter(Boolean).join(" & ");
     ownerBlock.append(kv([
-      ["Owner", [clean(m.owner), clean(m.owner2)].filter(Boolean).join(" & ") || (loc && loc.parcel ? (r.sections.parcel === "done" ? "Not published in county GIS" : null) : "See county records")],
+      ["Owner", ownerText || (loc && loc.parcel ? (r.sections.parcel === "done" ? "Not published in county GIS" : null) : "See county records")],
       ["Mailing address", mail || null],
       ["Parcel ID", v.ptm || v.parcelId, true],
       clean(m.id) && clean(m.id) !== String(v.ptm) ? ["County ID", clean(m.id), true] : null,
@@ -568,7 +653,7 @@
       ["Recorded", dateFmt(m.recorded)],
       ["Sold by (grantor)", clean(m.grantor) || null],
       ["Sale type", clean(m.saleType) || null],
-      ["Subdivision", clean(m.subdivision) || null],
+      ["Subdivision", /^acreage$/i.test(clean(m.subdivision)) ? null : clean(m.subdivision) || null],
       ["Legal description", clean(m.legal) || null],
       ["Use", clean(m.use) || null],
       ["Year built", num(m.yearBuilt) > 1700 ? String(num(m.yearBuilt)) : null],
@@ -576,9 +661,13 @@
       ["Dwelling units", num(m.units) > 0 ? String(num(m.units)) : null],
       ["Land use value", num(m.useValue) > 0 ? moneyFull(m.useValue) : null],
       ["Improvements value", moneyFull(m.impr)],
-      ["Prior total value", moneyFull(m.priorTotal)],
+      ["Prior year value", moneyFull(m.priorTotal) || (num(m.priorLand) != null ? moneyFull((num(m.priorLand) || 0) + (num(m.priorImpr) || 0)) : null)],
+      ["Tax year", clean(m.taxYear) || null],
       ["Tax status", clean(m.exempt) || null],
-      ["Water / sewer", [clean(m.water), clean(m.sewer)].filter(Boolean).join(" / ") || null],
+      waterSewerRow(m),
+      ["Family transfer", yesNo(m.familyTransfer) === "Yes" ? "Yes, part of a family transfer" : null],
+      ["Assessor class", clean(m.useClass) === "VAC" ? "Vacant" : clean(m.useClass) || null],
+      ["District", clean(m.district) || null],
       ["Calculated acres", acresFmt(v.acresCalc)]
     ]));
     // JCC sale history
@@ -598,11 +687,16 @@
 
     // Zoning and plan
     var zb = h("div", { class: "block" }, h("h3", { class: "sec" }, "Zoning and plan"));
+    var labels = r.labels || {};
     var zRow = r.zoning && r.zoning[0];
     var zCode = clean(m.zoningCode) || (zRow && loc.zoning.code !== "*" ? clean(zRow[loc.zoning.code]) : "") || clean(m.zoningDesc);
     var zName = zRow && loc.zoning.name ? clean(zRow[loc.zoning.name]) : "";
+    if (!zName && labels.zoning && zCode) zName = labels.zoning[zCode.toUpperCase()] || "";
     var pRow = r.plan && r.plan[0];
-    var planText = clean(m.compPlan) || (pRow && loc.plan ? clean(pRow[loc.plan.code]) || clean(pRow[loc.plan.alt]) : "");
+    var planCode = pRow && loc.plan ? clean(pRow[loc.plan.code]) || clean(pRow[loc.plan.alt]) : "";
+    var planText = clean(m.compPlan) || withLabel(planCode, labels.plan);
+    // If the code was translated, keep the alternate description too when it adds something
+    if (pRow && loc.plan && loc.plan.alt && planText && clean(pRow[loc.plan.alt]) && planText.indexOf(clean(pRow[loc.plan.alt])) < 0) planText += " (" + clean(pRow[loc.plan.alt]) + ")";
     var planExtra = [];
     if (pRow && loc.plan && loc.plan.extra) Object.keys(loc.plan.extra).forEach(function (k) { var vv = clean(pRow[loc.plan.extra[k]]); if (vv) planExtra.push(vv); });
     var polRow = r.policy && r.policy[0];
@@ -619,7 +713,8 @@
       ["Wetlands", clean(m.wetland) || null],
       ["Easements", num(m.easementAcres) > 0 ? acresFmt(m.easementAcres) : null],
       ["Noise / AICUZ", [clean(m.noise), clean(m.aicuz)].filter(Boolean).join(" / ") || null]
-    ]));
+    ].concat(r.areas ? r.areas.filter(Boolean) : [])));
+    if (loc && loc.areas && r.sections.areas === "loading") zb.append(loading("Checking service areas and county estimates"));
     if (zoningUpside(zCode, zName, planText)) zb.append(h("div", { class: "callout gold" }, h("strong", null, "Possible rezoning upside. "), "Current zoning reads low-density while the plan reads " + planText + ". Read the plan text and check nearby approvals below."));
     var zlinks = h("div", { class: "btn-row" });
     if (pRow && loc.plan && loc.plan.link && clean(pRow[loc.plan.link])) zlinks.append(extLink(clean(pRow[loc.plan.link]), "Plan text for this area"));
@@ -675,7 +770,9 @@
       el.append(nb);
     } else if (loc) {
       el.append(h("div", { class: "block" }, h("h3", { class: "sec" }, "Home values around it"),
-        h("div", { class: "callout plain" }, (loc.name || "This county") + " doesn't publish assessed values in its GIS, so nearby values come from the county assessment site."),
+        h("div", { class: "callout plain" }, loc.parcel
+          ? (loc.name || "This county") + " doesn't publish assessed values in its GIS, so nearby values come from the county assessment site."
+          : "Owner and value records for " + (loc.name || "this locality") + " haven't been connected in Tract yet. The assessment site has them."),
         loc.links && loc.links.assessor ? h("div", { class: "btn-row" }, extLink(loc.links.assessor(clean(m.id) || v.ptm), "Open the assessment record (neighborhood sales)")) : null));
     } else {
       el.append(h("div", { class: "callout plain" }, (v.locality || "This locality") + " shows the parcel outline and acreage from the state parcel layer. Owner, value and zoning connections for it haven't been added yet."));
@@ -697,13 +794,14 @@
     var units = [];
     if (num(m.units) > 0) units.push(num(m.units) + " units");
     ["sfd", "th", "condo", "apt"].forEach(function (k) { if (num(m[k]) > 0) units.push(num(m[k]) + " " + { sfd: "single-family", th: "townhouse", condo: "condo", apt: "apartment" }[k]); });
-    var meta = [clean(m.type), clean(m.status), dateFmt(m.date), clean(m.fromZone) || clean(m.toZone) ? (clean(m.fromZone) ? clean(m.fromZone) + " → " : "to ") + clean(m.toZone) : "", num(m.acres) > 0 ? acresFmt(m.acres) : "", units.join(", "), num(m.cashProffer) > 0 ? "cash proffer " + moneyFull(m.cashProffer) : "", clean(m.proffer) && clean(m.proffer) !== "N" ? "proffered" : ""].filter(Boolean);
+    var meta = [clean(m.type), clean(m.devType), clean(m.status), dateFmt(m.date), dateFmt(m.approved) ? "approved " + dateFmt(m.approved) : "", clean(m.fromZone) || clean(m.toZone) ? (clean(m.fromZone) ? clean(m.fromZone) + " → " : "to ") + clean(m.toZone) : "", num(m.acres) > 0 ? acresFmt(m.acres) : "", units.join(", "), num(m.cashProffer) > 0 ? "cash proffer " + moneyFull(m.cashProffer) : "", clean(m.proffer) && clean(m.proffer) !== "N" ? "proffered" : "", clean(m.ordinance) ? "ordinance " + clean(m.ordinance) : ""].filter(Boolean);
+    var people = [clean(m.developer) ? "Developer: " + clean(m.developer) : "", clean(m.applicant) && clean(m.applicant) !== name ? "Applicant: " + clean(m.applicant) : "", clean(m.caseOwner) ? "Owner: " + clean(m.caseOwner) : "", clean(m.rep) ? "Represented by " + clean(m.rep) : ""].filter(Boolean);
     var desc = clean(m.desc);
     if (!number && !name && f.any) { var ks = Object.keys(a).filter(function (k) { return !/objectid|shape|globalid|created|edited/i.test(k) && clean(a[k]); }).slice(0, 4); name = ks.map(function (k) { return clean(a[k]); }).join(" · "); }
     var link = clean(m.link);
     return h("div", { class: "item static" },
       h("div", { class: "t" }, number || "Case", name ? h("span", null, name) : null, cs.onParcel ? h("span", { class: "pill gold" }, "On this parcel") : null),
-      clean(m.applicant) ? h("div", { class: "d" }, "Applicant: " + clean(m.applicant)) : null,
+      people.length ? h("div", { class: "d" }, people.join(" · ")) : null,
       meta.length ? h("div", { class: "m" }, meta.join(" · ")) : null,
       desc ? h("div", { class: "d" }, desc.length > 260 ? desc.slice(0, 257) + "…" : desc) : null,
       h("div", { class: "d" }, cs.cfg.label + (cs.wide ? " · covers a large area (countywide or district-wide)" : cs.dist != null && !cs.onParcel ? " · " + milesFmt(cs.dist) : "")),
@@ -734,7 +832,7 @@
     var r = current; if (!r || !r.vgin) return "";
     var m = Object.assign({}, r.county || {}, r.join || {});
     var lines = [
-      (clean(m.address) || "Parcel " + (r.vgin.ptm || r.vgin.parcelId)) + ", " + r.vgin.locality,
+      (addrOf(m) || "Parcel " + (r.vgin.ptm || r.vgin.parcelId)) + ", " + r.vgin.locality,
       "Parcel ID: " + (r.vgin.ptm || r.vgin.parcelId),
       clean(m.owner) ? "Owner: " + clean(m.owner) : null,
       "Acres: " + (acresFmt(num(m.acres) != null ? m.acres : r.vgin.acresCalc) || "?"),
@@ -755,7 +853,7 @@
     if (list.some(function (s) { return s.key === k; })) { showTab("saved"); return; }
     var m = Object.assign({}, r.county || {}, r.join || {});
     list.unshift({ key: k, fips: r.vgin.fips, locality: r.vgin.locality, pin: r.vgin.ptm || r.vgin.parcelId, lat: r.lat, lng: r.lng,
-      label: clean(m.address) || "Parcel " + (r.vgin.ptm || r.vgin.parcelId), owner: clean(m.owner), acres: num(m.acres) != null ? num(m.acres) : r.vgin.acresCalc,
+      label: addrOf(m) || "Parcel " + (r.vgin.ptm || r.vgin.parcelId), owner: clean(m.owner), acres: num(m.acres) != null ? num(m.acres) : r.vgin.acresCalc,
       total: num(m.total), status: "Screening", note: "", savedAt: Date.now() });
     store("saved", list);
     toast("Saved to your pipeline");
@@ -1011,13 +1109,13 @@
       var loc = REG.byFips[fips];
       if (!loc || !loc.cases) return;
       await Promise.all(loc.cases.map(async function (cfg) {
-        var textFields = ["name", "alt", "applicant", "desc"].map(function (k) { return cfg.f && cfg.f[k]; }).filter(Boolean);
+        var textFields = ["name", "alt", "applicant", "developer", "caseOwner", "rep", "desc"].map(function (k) { return cfg.f && cfg.f[k]; }).filter(Boolean);
         if (!textFields.length) return;
         var where = [];
         textFields.forEach(function (tf) { f.casePatterns.forEach(function (p) { where.push("UPPER(" + tf + ") LIKE '%" + sq(p.toUpperCase()) + "%'"); }); });
         try {
           var j = await ags(layerUrl(cfg), { where: where.join(" OR "), outFields: "*", returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0005, resultRecordCount: 60 }, { timeout: 25000 });
-          (j.features || []).forEach(function (x) { out.push({ cfg: cfg, a: x.attributes, m: mapAttrs(x.attributes, cfg.f), center: ringsCentroid(x.geometry && x.geometry.rings), county: loc.name }); });
+          (j.features || []).forEach(function (x) { out.push({ cfg: cfg, a: x.attributes, m: mapAttrs(x.attributes, cfg.f), center: geomCenter(x.geometry), county: loc.name }); });
         } catch (e) { /* skip */ }
       }));
     }));
@@ -1137,8 +1235,9 @@
       if (l.zoning || (l.parcel && l.parcel.f.zoningCode)) has.push("zoning");
       if (l.plan || (l.parcel && l.parcel.f.compPlan)) has.push("comp plan");
       if (l.cases) has.push("cases");
+      if (l.areas) has.push(l.areas.map(function (a) { return a.label.toLowerCase(); }).join(", "));
       if (l.nearby) has.push("nearby values");
-      cov.append(h("div", { class: "coverage-row" }, h("strong", null, l.name), h("span", { class: "pill " + (l.depth === "deep" ? "green" : l.depth === "partial" ? "gold" : "gray") }, l.depth === "deep" ? "Full" : l.depth === "partial" ? "Partial" : "Outline"),
+      cov.append(h("div", { class: "coverage-row" }, h("strong", null, l.name), h("span", { class: "pill " + (l.depth === "deep" ? "green" : l.depth === "partial" ? "gold" : "gray") }, l.depth === "deep" ? "Full" : l.depth === "partial" ? "Partial" : has.length ? "Plan only" : "Outline"),
         h("div", { class: "d" }, (has.length ? has.join(", ") : "parcel outline and links") + (l.stale ? ". " + l.stale : ""))));
     });
     el.append(h("div", { class: "block" }, h("div", { class: "eyebrow" }, "Data coverage"), h("h2", { class: "title" }, "What each county publishes"),
