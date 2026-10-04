@@ -369,7 +369,7 @@
         }).filter(function (m) { var d = toDate(m.saleDate); return d && d >= cut && num(m.acres) > 0; });
         land.forEach(function (m) { m.perAcre = num(m.salePrice) / num(m.acres); });
         land.sort(function (a, b) { return toDate(b.saleDate) - toDate(a.saleDate); });
-        r.landSales = { rows: land.slice(0, 12), count: land.length, medianPerAcre: u.median(land.map(function (m) { return m.perAcre; })) };
+        r.landSales = { rows: land.slice(0, 12), all: land, count: land.length, medianPerAcre: u.median(land.map(function (m) { return m.perAcre; })) };
       } catch (e) { r.landSales = { error: true }; }
     }
   }
@@ -647,6 +647,22 @@
           if (!ls.rows.length) nb.append(h("div", { class: "empty" }, "No vacant sales of an acre or more found."));
           else {
             nb.append(h("div", { class: "stats" }, u.stat(money(ls.medianPerAcre), "Median price per acre"), u.stat(String(ls.count), "Sales found")));
+            // How this parcel's assessed land compares with what land actually sells for nearby
+            var myAc = acres || v.acresCalc, myPer = land && myAc ? land / myAc : null;
+            // Small lots sell for far more per acre than big tracts, so compare with similar sizes when there are enough
+            var similar = ls.all ? ls.all.filter(function (s) { return num(s.acres) >= myAc / 3 && num(s.acres) <= myAc * 3; }) : [];
+            var useSimilar = similar.length >= 2;
+            var cmpPer = useSimilar ? u.median(similar.map(function (s) { return s.perAcre; })) : ls.medianPerAcre;
+            var cmpCount = useSimilar ? similar.length : ls.count;
+            if (myPer && cmpPer) {
+              var ratio = myPer / cmpPer;
+              nb.append(h("div", { class: "callout " + (ratio < 0.7 ? "gold" : "plain") },
+                h("strong", null, "Assessed land " + money(myPer) + "/ac vs " + (useSimilar ? cmpCount + " similar-size sales (" + acresFmt(myAc / 3) + " to " + acresFmt(myAc * 3) + ")" : "all nearby sales (no similar sizes)") + " at " + money(cmpPer) + "/ac. "),
+                ratio < 0.7 ? "The county values this land at " + Math.round(ratio * 100) + "% of what vacant land has sold for within 2 miles, so an owner's price expectations may run well above the assessment."
+                  : ratio > 1.3 ? "Assessed at " + Math.round(ratio * 100) + "% of nearby sale prices; the assessment may reflect zoning, road frontage or utilities the nearby sales lacked."
+                  : "Assessment is in line with nearby land sales (" + Math.round(ratio * 100) + "%).",
+                cmpCount < 4 ? " Only " + cmpCount + " sale" + (cmpCount === 1 ? "" : "s") + " to compare, so treat this as a rough guide." : ""));
+            }
             var ll = h("div", { class: "list" });
             ls.rows.forEach(function (s) {
               ll.append(h("button", { type: "button", class: "item", onclick: function () { if (s.center) { M.map.setView([s.center[1], s.center[0]], 17); selectParcel(s.center[0], s.center[1], { fit: true }); } } },

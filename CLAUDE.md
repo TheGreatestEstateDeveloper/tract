@@ -75,5 +75,6 @@ A scheduled task runs Monday mornings (about 6:56 a.m. Eastern). It checks count
 - Nearby cases default to residential rezonings, plans and subdivisions from the last 10 years, chosen by keywords in each county's case types and descriptions; "Show all" lists everything.
 - Net developable acres sample about 900 points per parcel against FEMA flood (SFHA), NWI wetlands and the county RPA (`rpa` in localities: Fairfax, Prince William, Stafford, Hanover, Henrico, Chesterfield). Other counties don't subtract RPA. Checked on 25000 Pear Orchard Rd: floodplain 29.8 vs the county's 30.2 ac, RPA 30.7 vs 31.1.
 - Home counts are rough ranges: R-number codes where the county uses them (`zoningDensity: "rn"`: Fairfax, Loudoun, Prince William), otherwise keywords in the district and plan names. No ordinance lot-size math.
+- Assessed land vs sales compares the parcel's assessed land per acre with vacant sales within 2 miles in the last 5 years, using sales between a third and three times its size when there are at least two. Only counties with sale prices and building values in GIS (not Loudoun, Prince William, Stafford, Suffolk, Hanover).
 - Some county map servers are slow to draw (Prince William's zoning export has taken 9+ seconds); the map shows a "Drawing ..." note meanwhile.
 - The app name and logo are still provisional (the owner chose to decide later).
