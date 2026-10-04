@@ -45,8 +45,11 @@ A scheduled task runs Monday mornings (about 6:56 a.m. Eastern). It checks count
 
 ## Known gaps (Oct 2026)
 
-- Fairfax and Loudoun don't publish owner names in GIS; the app links to iCARE and Loudoun's parcel database.
-- Henrico's open parcel file is a March 2022 snapshot.
-- Hanover and Suffolk are links only; Stafford is partial (no owners or values).
-- Counties file cases under project names, so matching cases to builders by name is weak.
+- Fairfax and Loudoun don't publish owner names anywhere as open data (checked every Fairfax open data layer, Loudoun's land record services, and ArcGIS Online). Their owner sites (iCARE, Loudoun's parcel database) block cross-site reads and framing, so showing owners inside Tract would need a small relay server. That is a structural change the owner hasn't approved.
+- Loudoun publishes no assessed values or sale prices in GIS. Prince William publishes owners and deeds but no values.
+- Henrico publishes current values, sales and deeds but no owner names. The old "0322" open file holds only about 735 county-owned parcels, so it isn't used. The report shows the mailing address, which often names the owner's company.
+- Hanover publishes no sale prices in GIS. Suffolk publishes no values or sale prices. Stafford publishes neither owners nor values, and its comp plan layer dates from 2019.
+- Fauquier's land development application layer was last updated June 2023.
+- Eleven Hampton Roads localities have only the regional HRPDC future land use (2023); their owner and value records aren't connected yet. Most other Virginia localities have outlines only.
+- Counties file cases under project names, so matching cases to builders by name is weak. Hanover (developer name), Fairfax PLUS, Henrico agendas and Virginia Beach (applicant name) do name the people behind cases.
 - Case layers lag new filings by weeks.

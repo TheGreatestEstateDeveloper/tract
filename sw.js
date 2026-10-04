@@ -1,5 +1,5 @@
 /* Tract service worker: keeps the app shell available offline. County data always comes live from the network. */
-var VERSION = "tract-v2";
+var VERSION = "tract-v3";
 var SHELL = ["./", "index.html", "css/app.css", "js/app.js", "js/localities.js", "js/firms.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", function (e) {
