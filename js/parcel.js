@@ -72,6 +72,7 @@
       T.emit("parcel", current);
       render();
       loadCountyData(my);
+      loadConstraints(my);
     } catch (e) {
       if (my !== token) return;
       current.error = "The state parcel service didn't answer. Check your connection and tap the parcel again.";
@@ -93,6 +94,110 @@
   }
 
   function sec(name, state) { if (current) current.sections[name] = state; }
+
+  // ---------------------------------------------------------------- net developable acres
+  // Floodplain (FEMA, statewide), wetlands (USFWS NWI, statewide) and the county RPA where published.
+  // Overlaps are counted once by sampling a grid of points across the parcel: a point in any constraint is
+  // constrained, so each acre is subtracted once no matter how many layers cover it.
+  var CONSTRAINTS = [
+    { key: "flood", label: "Floodplain", url: "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28", where: "SFHA_TF = 'T'" },
+    { key: "wetland", label: "Wetlands", url: "https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/0", where: "1=1" }
+  ];
+  function geoBbox(g) {
+    var b = [180, 90, -180, -90];
+    geo.polysOf(g).forEach(function (p) { p.forEach(function (ring) { ring.forEach(function (c) { if (c[0] < b[0]) b[0] = c[0]; if (c[1] < b[1]) b[1] = c[1]; if (c[0] > b[2]) b[2] = c[0]; if (c[1] > b[3]) b[3] = c[1]; }); }); });
+    return b;
+  }
+  async function loadConstraints(my) {
+    var r = current, g = r.vgin.geometry, b = geoBbox(g);
+    var env = { xmin: b[0], ymin: b[1], xmax: b[2], ymax: b[3], spatialReference: { wkid: 4326 } };
+    var layers = CONSTRAINTS.slice();
+    if (r.loc && r.loc.rpa) layers.push({ key: "rpa", label: "Resource protection area", url: gis.layerUrl(r.loc.rpa), where: "1=1" });
+    sec("net", "loading");
+    var polys = await Promise.all(layers.map(function (c) {
+      return gis.inEnvelope(c.url, env, { where: c.where, outFields: "*", returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.00003, resultRecordCount: 500 }, { timeout: 25000 })
+        .then(function (j) { return (j.features || []).filter(function (x) { return x.geometry && x.geometry.rings; }).map(function (x) { return { rings: x.geometry.rings, bb: ringsBbox(x.geometry.rings) }; }); })
+        .catch(function () { return null; });
+    }));
+    if (my !== token) return;
+    // Grid of about 900 points over the bounding box, kept where they fall inside the parcel
+    var steps = 30, dx = (b[2] - b[0]) / steps, dy = (b[3] - b[1]) / steps, inside = 0, any = 0, per = layers.map(function () { return 0; });
+    for (var i = 0; i < steps; i++) for (var j = 0; j < steps; j++) {
+      var pt = [b[0] + (i + 0.5) * dx, b[1] + (j + 0.5) * dy];
+      if (!geo.pointInGeom(pt, g)) continue;
+      inside++;
+      var hitAny = false;
+      polys.forEach(function (list, k) {
+        if (!list) return;
+        for (var q = 0; q < list.length; q++) {
+          var bb = list[q].bb;
+          if (pt[0] < bb[0] || pt[0] > bb[2] || pt[1] < bb[1] || pt[1] > bb[3]) continue;
+          if (geo.pointInRings(pt, list[q].rings)) { per[k]++; hitAny = true; break; }
+        }
+      });
+      if (hitAny) any++;
+    }
+    // Fractions only; acres are applied when the report draws, once the county acreage has arrived
+    r.net = inside ? {
+      parts: layers.map(function (c, k) { return { label: c.label, frac: polys[k] ? per[k] / inside : null }; }),
+      anyFrac: any / inside,
+      missing: layers.filter(function (c, k) { return !polys[k]; }).map(function (c) { return c.label; }),
+      noRpa: !(r.loc && r.loc.rpa)
+    } : null;
+    sec("net", "done");
+    render();
+  }
+  function ringsBbox(rings) {
+    var b = [180, 90, -180, -90];
+    rings.forEach(function (ring) { ring.forEach(function (c) { if (c[0] < b[0]) b[0] = c[0]; if (c[1] < b[1]) b[1] = c[1]; if (c[0] > b[2]) b[2] = c[0]; if (c[1] > b[3]) b[3] = c[1]; }); });
+    return b;
+  }
+
+  // Rough homes-per-acre ranges. Counties named in R-number style (Fairfax, Loudoun, Prince William) put the
+  // density in the code (R-4 = 4 per acre, PDH-3 = 3); elsewhere the district or plan name decides the range.
+  function zoningDensity(code, name, loc) {
+    var c = String(code || "").toUpperCase().trim(), t = (c + " " + (name || "")).toLowerCase();
+    if (loc && loc.zoningDensity === "rn") {
+      var m = c.match(/^(?:R|PDH|PD-H|PRC|RM)-?(\d+(?:\.\d+)?)/);
+      if (m && +m[1] <= 40) return { lo: +m[1] * 0.7, hi: +m[1], basis: c + " allows up to " + m[1] + " per acre" };
+    }
+    if (/commercial|business|industrial|office|^B-?\d|^M-?\d|^I-?\d|^C-?\d|employment|data center/.test(t) && !/residential|mixed/.test(t)) return { none: true, basis: "not a residential district" };
+    if (/agric|^a-?\d|^ar|^ra\b|^a\b|farm/.test(t)) return { lo: 0.05, hi: 0.2, basis: "farm zoning, about 1 home per 5 to 20 acres" };
+    if (/conservation|^r-?c\b/.test(t)) return { lo: 0.05, hi: 0.2, basis: "conservation zoning" };
+    if (/rural|estate|^rr|^re\b|^r-?e\b/.test(t)) return { lo: 0.2, hi: 0.5, basis: "rural or estate lots" };
+    if (/townho|attached|\bth\b/.test(t)) return { lo: 6, hi: 12, basis: "townhouse district" };
+    if (/multi|apartment|^rm|^r-?m\b|^mf/.test(t)) return { lo: 12, hi: 24, basis: "multifamily district" };
+    if (/residential|one-family|single|^r-?\d|^rs|^sr|^pd/.test(t)) return { lo: 1, hi: 4, basis: "single-family district" };
+    return null;
+  }
+  function planDensity(text) {
+    var t = String(text || "").toLowerCase();
+    var range = t.match(/(\d+(?:\.\d+)?)\s*(?:-|to|–)\s*(\d+(?:\.\d+)?)\s*(?:du|units|dwelling)/);
+    if (range) return { lo: +range[1], hi: +range[2], basis: "plan range " + range[1] + " to " + range[2] + " per acre" };
+    var one = t.match(/(\d+(?:\.\d+)?)\s*(?:du|units)\s*(?:\/|per)\s*ac/);
+    if (one) return { lo: +one[1] * 0.6, hi: +one[1], basis: "plan up to " + one[1] + " per acre" };
+    var rn = t.match(/residential(?: neighborhood)?\s+(\d+(?:\.\d+)?)\b/);
+    if (rn && +rn[1] <= 40) return { lo: +rn[1] * 0.5, hi: +rn[1], basis: "plan category number read as up to " + rn[1] + " per acre" };
+    if (/commercial|industrial|office|employment|business|government|park|open space|semi-public/.test(t) && !/residential|mixed/.test(t)) return { none: true, basis: "not a residential plan category" };
+    if (/rural residential/.test(t)) return { lo: 0.2, hi: 1, basis: "rural residential" };
+    if (/rural|agric|conservation|preserv/.test(t)) return { lo: 0.05, hi: 0.2, basis: "rural or agricultural plan" };
+    if (/suburban residential 1|\bsr1\b/.test(t)) return { lo: 1, hi: 2.4, basis: "Suburban Residential 1" };
+    if (/suburban residential 2|\bsr2\b/.test(t)) return { lo: 2.4, hi: 3.4, basis: "Suburban Residential 2" };
+    if (/urban residential|\bur\b/.test(t)) return { lo: 3.4, hi: 6.8, basis: "urban residential" };
+    if (/high density|multi-family|multifamily|\bmfr\b/.test(t)) return { lo: 12, hi: 20, basis: "high density or multifamily" };
+    if (/medium.high|medium-high/.test(t)) return { lo: 8, hi: 12, basis: "medium-high density" };
+    if (/medium/.test(t)) return { lo: 4, hi: 8, basis: "medium density" };
+    if (/low density|low-density/.test(t)) return { lo: 1, hi: 2.5, basis: "low density" };
+    if (/mixed|town center|village|traditional neighborhood|tnd/.test(t)) return { lo: 4, hi: 12, basis: "mixed use or village" };
+    if (/suburban|neighborhood|residential|transition/.test(t)) return { lo: 2, hi: 4, basis: "suburban residential" };
+    return null;
+  }
+  function unitsText(d, acres) {
+    if (!d) return null;
+    if (d.none) return "None (" + d.basis + ")";
+    var lo = Math.floor(acres * d.lo), hi = Math.floor(acres * d.hi);
+    return (lo === hi ? "About " + hi : "About " + lo + " to " + hi) + " homes (" + d.basis + ")";
+  }
 
   async function loadCountyData(my) {
     var r = current, loc = r.loc;
@@ -483,6 +588,25 @@
     zlinks.append(h("button", { type: "button", class: "btn", onclick: function () { T.map.toggle("flood", true); T.map.toggle("wetlands", true); u.toast("Flood zones and wetlands are on. Open Layers to change them."); } }, "Show flood and wetlands"));
     zb.append(zlinks);
     el.append(zb);
+
+    // Development potential: net developable acres and rough unit counts
+    var dp = section("Development potential");
+    var gross = acres || v.acresCalc;
+    if (r.sections.net === "loading" || !r.sections.net) dp.append(u.loading("Measuring floodplain, wetlands and RPA on this parcel"));
+    else if (!r.net) dp.append(h("div", { class: "empty" }, "Couldn't measure constraints for this parcel."));
+    else {
+      var netAc = gross * (1 - r.net.anyFrac);
+      dp.append(h("div", { class: "stats" }, u.stat(acresFmt(gross), "Gross acres"), u.stat(acresFmt(gross * r.net.anyFrac), "Constrained"), u.stat(acresFmt(netAc), "Net developable")));
+      dp.append(u.kv(r.net.parts.map(function (p) { return [p.label, p.frac == null ? "Couldn't load" : p.frac > 0 ? acresFmt(gross * p.frac) + " (" + Math.round(p.frac * 100) + "%)" : "None"]; })
+        .concat([
+          ["Homes at current zoning", unitsText(zoningDensity(zCode, zName, loc), netAc)],
+          ["Homes at plan density", unitsText(planDensity(planText + " " + planExtra.join(" ")), netAc)]
+        ])));
+      dp.append(h("div", { class: "sub" }, "Overlaps count once. Measured by sampling the parcel against FEMA flood zones, USFWS wetlands" + (r.net.noRpa ? "" : " and the county RPA map") + "." +
+        (r.net.noRpa ? " This county's RPA isn't connected, so RPA isn't subtracted." : "") +
+        " Home counts are rough ranges from the district and plan names applied to net acres; confirm in the ordinance and plan text."));
+    }
+    el.append(dp);
 
     // Cases
     if (loc && loc.cases) {

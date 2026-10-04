@@ -27,7 +27,8 @@
 
   // ---------------- Northern Virginia ----------------
   L["51059"] = {
-    name: "Fairfax County", region: "Northern Virginia", depth: "deep",
+    name: "Fairfax County", region: "Northern Virginia", depth: "deep", zoningDensity: "rn",
+    rpa: { url: "https://services1.arcgis.com/ioennV6PpG5Xodq0/ArcGIS/rest/services/Resource_Protection_Areas/FeatureServer/0" },
     parcel: {
       url: "https://services1.arcgis.com/ioennV6PpG5Xodq0/ArcGIS/rest/services/Parcels/FeatureServer/0",
       idField: "PIN", f: { id: "PIN" }
@@ -71,7 +72,7 @@
   };
 
   L["51107"] = {
-    name: "Loudoun County", region: "Northern Virginia", depth: "deep",
+    name: "Loudoun County", region: "Northern Virginia", depth: "deep", zoningDensity: "rn",
     parcel: {
       url: "https://logis.loudoun.gov/gis/rest/services/COL/LandRecords/MapServer/5",
       idField: "PA_MCPI", f: { id: "PA_MCPI", acres: "PA_LEGAL_ACRE", subdivision: "PA_SUBD_NAME" }
@@ -98,7 +99,8 @@
   };
 
   L["51153"] = {
-    name: "Prince William County", region: "Northern Virginia", depth: "deep",
+    name: "Prince William County", region: "Northern Virginia", depth: "deep", zoningDensity: "rn",
+    rpa: { url: "https://gisweb.pwcva.gov/arcgis/rest/services/OpenData/OpenData/MapServer/73" },
     parcel: {
       url: "https://gisweb.pwcva.gov/arcgis/rest/services/CountyMapper/LandRecords/MapServer/4",
       idField: "GPIN",
@@ -136,6 +138,7 @@
 
   L["51179"] = {
     name: "Stafford County", region: "Northern Virginia", depth: "partial",
+    rpa: { url: "https://services1.arcgis.com/qKiA6JuCrE2l72iL/arcgis/rest/services/Resource_Protection_Area/FeatureServer/0" },
     parcel: {
       url: "https://services1.arcgis.com/qKiA6JuCrE2l72iL/arcgis/rest/services/Parcels/FeatureServer/0",
       idField: "PRCLID", f: { id: "PRCLID", address: "FULLADD", units: "EXDU" }
@@ -242,6 +245,7 @@
   var HAN = "https://services2.arcgis.com/sKZWgJlU6SekCzQV/arcgis/rest/services/";
   L["51085"] = {
     name: "Hanover County", region: "Fredericksburg to Richmond", depth: "deep",
+    rpa: { url: HAN + "Chesapeake_Bay_Resource_Protection_Areas/FeatureServer/35" },
     parcel: {
       url: HAN + "Hanover_Parcels/FeatureServer/0",
       idField: "GPIN",
@@ -275,6 +279,7 @@
   var HEN = "https://portal.henrico.gov/mapping/rest/services/";
   L["51087"] = {
     name: "Henrico County", region: "Fredericksburg to Richmond", depth: "deep",
+    rpa: { url: HEN + "DPW/Resource_Protection_Area_Viewing/FeatureServer/14" },
     // Current county file (values, sales, deeds). Henrico doesn't publish owner names; the mailing address often
     // names the owner's company ("C/O ..."). The old "0322" open file only holds about 700 county-owned parcels.
     parcel: {
@@ -310,6 +315,7 @@
 
   L["51041"] = {
     name: "Chesterfield County", region: "Fredericksburg to Richmond", depth: "deep",
+    rpa: { url: "https://services3.arcgis.com/TsynfzBSE6sXfoLq/arcgis/rest/services/Hydrography_ProdA/FeatureServer/6" },
     parcel: {
       url: "https://services3.arcgis.com/TsynfzBSE6sXfoLq/arcgis/rest/services/Cadastral_ProdA/FeatureServer/3",
       idField: "GPIN",
