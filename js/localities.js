@@ -314,7 +314,8 @@
       url: "https://services3.arcgis.com/TsynfzBSE6sXfoLq/arcgis/rest/services/Cadastral_ProdA/FeatureServer/3",
       idField: "GPIN",
       f: { id: "GPIN", taxId: "TaxID", owner: "OwnerName", mail1: "OwnerAddress", mailCity: "OwnerCity", mailState: "OwnerState", mailZip: "OwnerZip", address: "Address",
-           acres: "DeededAcres", impr: "ImprovementValue", total: "FairMarketValue", useValue: "LandUseValue", assessYear: "AssessmentYear",
+           // FairMarketValue is land only; TotalAssessment is the taxable total (lower for land in the farm program)
+           acres: "DeededAcres", land: "FairMarketValue", impr: "ImprovementValue", taxable: "TotalAssessment", useValue: "LandUseValue", taxYear: "AssessmentYear",
            saleDate: "SaleDate", salePrice: "SalePrice", deedBook: "DeedBook", deedPage: "Page", yearBuilt: "YearBuilt", livingArea: "FinishedArea", use: "UseCode",
            subdivision: "SubdivisionName", water: "WaterConnect", sewer: "SewerConnect", floodAcres: "FloodAcres", rpaAcres: "RpaAcres", easementAcres: "EsmtAcres" }
     },
