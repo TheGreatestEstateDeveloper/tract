@@ -63,7 +63,7 @@
   }
   function dateFmt(v) { var d = toDate(v); if (!d || d.getFullYear() < 1901) return null; return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
   function median(a) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }); var m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
-  function clean(v) { if (v == null) return ""; var s = String(v).trim(); return /^(null|none|n\/a|0)$/i.test(s) ? "" : s; }
+  function clean(v) { if (v == null) return ""; var s = String(v).trim(); return /^(null|none|n\/a|0|unassigned|unknown)$/i.test(s) ? "" : s; }
   function sq(s) { return String(s).replace(/'/g, "''"); }
   function toast(msg) { var t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 2600); }
   function loading(text) { return h("div", { class: "loading" }, text || "Loading"); }
