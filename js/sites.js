@@ -11,7 +11,7 @@
   var clean = u.clean, num = u.num;
 
   var DEFAULTS = { minAc: 10, maxAc: "", vacant: true, estate: false, trust: false, individual: false, outOfState: false, longHeld: 0, transfer: false,
-    farm: false, upside: false, utilities: false, noBuilders: true, maxPerAcre: "", nearCases: false, zoning: "" };
+    farm: false, upside: false, utilities: false, noBuilders: true, maxPerAcre: "", nearCases: false, zoning: "", assemble: false };
   var f = Object.assign({}, DEFAULTS, u.store("siteFilters") || {});
   var PRESETS = [
     { key: "inherited", label: "Inherited farmland with upside", d: "Estate, heirs, trust or a recent $0 family transfer, in a farm tax program or farm zoning, where the plan allows more.",
@@ -83,8 +83,10 @@
     try {
       if (loc && loc.parcel && loc.parcel.f.acres) {
         var pf = loc.parcel.f, pl = loc.parcel;
-        var where = gis.nf(pl, pf.acres) + " >= " + (num(f.minAc) || 1);
-        if (num(f.maxAc)) where += " AND " + gis.nf(pl, pf.acres) + " <= " + num(f.maxAc);
+        // Assemblages: smaller parcels count too, since several together can make the site
+        var floor = f.assemble ? Math.min(1, num(f.minAc) || 1) : (num(f.minAc) || 1);
+        var where = gis.nf(pl, pf.acres) + " >= " + floor;
+        if (num(f.maxAc) && !f.assemble) where += " AND " + gis.nf(pl, pf.acres) + " <= " + num(f.maxAc);
         if (f.vacant && pf.impr) where += " AND (" + gis.nf(pl, pf.impr) + " = 0 OR " + pf.impr + " IS NULL)";
         var want = ["owner", "owner2", "acres", "areaSqft", "address", "addrNo", "addrPre", "addrStreet", "addrSuffix", "id", "total", "land", "impr", "useValue", "zoningCode", "compPlan",
           "saleDate", "salePrice", "mailState", "mailCity", "familyTransfer", "water", "sewer", "useClass"].map(function (k) { return pf[k]; }).filter(Boolean);
@@ -101,7 +103,7 @@
           m.center = geo.ringsCentroid(x.geometry && x.geometry.rings);
           if (!m.center) return;
           var a = num(m.acres);
-          if (a == null || a < (num(f.minAc) || 1)) return;
+          if (a == null || a < floor) return;
           var fl = flags(m, loc);
           var planCode = clean(m.compPlan) || attrAt(planPolys, m.center, [loc.plan && loc.plan.code].filter(Boolean)) || attrAt(planPolys, m.center, [loc.plan && loc.plan.alt].filter(Boolean));
           m.planText = clean(m.compPlan) || gis.withLabel(planCode, labels);
@@ -134,8 +136,9 @@
       results = { msg: "The parcel search didn't finish. Zoom in a little and try again." }; busy = false; render(); return;
     }
     // Filter and score
-    out.rows = out.rows.filter(pass).map(function (m) { m.score = score(m); return m; })
-      .sort(function (a, b) { return b.score - a.score || (num(b.acres) || 0) - (num(a.acres) || 0); });
+    out.rows = out.rows.filter(pass).map(function (m) { m.score = score(m); return m; });
+    if (f.assemble) out.rows = assemble(out.rows);
+    out.rows.sort(function (a, b) { return b.score - a.score || (num(b.acres) || 0) - (num(a.acres) || 0); });
     results = out;
     busy = false;
     render();
@@ -178,6 +181,32 @@
     }
     return true;
   }
+  // Group parcels by owner (same name after removing punctuation) and keep owners whose parcels add up
+  // to the minimum. Combined acres, every parcel's location, and the strongest signals carry over.
+  function ownerKey(m) { return u.norm([clean(m.owner), clean(m.owner2)].join(" ")).replace(/\b(the|and|of)\b/g, "").replace(/\s+/g, " ").trim(); }
+  function assemble(rows) {
+    var groups = {};
+    rows.forEach(function (m) {
+      var k = ownerKey(m);
+      if (!k) return;
+      (groups[k] = groups[k] || []).push(m);
+    });
+    var out = [];
+    Object.keys(groups).forEach(function (k) {
+      var ps = groups[k];
+      var total = ps.reduce(function (s, x) { return s + (num(x.acres) || 0); }, 0);
+      if (total < (num(f.minAc) || 1) || (num(f.maxAc) && total > num(f.maxAc))) return;
+      if (ps.length < 2 && total < (num(f.minAc) || 1)) return;
+      var best = ps.slice().sort(function (a, b) { return b.score - a.score; })[0];
+      var land = ps.reduce(function (s, x) { return s + (num(x.land) || 0); }, 0);
+      out.push(Object.assign({}, best, {
+        group: ps, acres: total, land: land || null, address: ps.length > 1 ? ps.length + " parcels" : T.parcel.addrOf(best),
+        score: best.score + (ps.length > 1 ? Math.min(10, ps.length * 2) : 0)
+      }));
+    });
+    return out;
+  }
+
   function score(m) {
     var fl = m.flags || {}, s = 0;
     if (fl.estate) s += 30;
@@ -277,7 +306,8 @@
         check("farm", "In a farm or forest tax program"),
         check("utilities", "Public water or sewer", "Where the county publishes it"),
         check("nearCases", "Rezonings within 1.5 miles (last 3 years)"),
-        check("noBuilders", "Hide land builders already own"))));
+        check("noBuilders", "Hide land builders already own"),
+        check("assemble", "Combine parcels with the same owner", "Assemblages: smaller parcels count toward the minimum when one owner holds several"))));
     el.append(h("div", { class: "btn-row sticky-actions" },
       h("button", { type: "button", class: "btn primary", onclick: run }, u.icon("search"), busy ? "Searching" : "Search this view"),
       h("button", { type: "button", class: "btn", onclick: function () { f = Object.assign({}, DEFAULTS); save(); results = null; render(); } }, "Reset")));
@@ -295,17 +325,29 @@
     var brass = M.cssVar("--brass");
     rows.slice(0, 150).forEach(function (x, i) {
       var addr = T.parcel.addrOf(x);
+      var multi = x.group && x.group.length > 1;
       l.append(h("button", { type: "button", class: "item", onclick: function () { go(x); } },
-        h("div", { class: "t" }, clean(x.owner) || addr || clean(x.id) || "Parcel", num(x.acres) ? h("span", { class: "pill gray" }, u.acresFmt(x.acres)) : null, x.score ? h("span", { class: "score", title: "Match score" }, x.score) : null),
+        h("div", { class: "t" }, clean(x.owner) || addr || clean(x.id) || "Parcel", num(x.acres) ? h("span", { class: "pill gray" }, u.acresFmt(x.acres) + (multi ? " combined" : "")) : null,
+          multi ? h("span", { class: "pill brass" }, x.group.length + " parcels") : null, x.score ? h("span", { class: "score", title: "Match score" }, x.score) : null),
         h("div", { class: "d" }, [addr, x.zone, x.planText ? "plan: " + x.planText : "", u.money(x.land) && num(x.acres) >= 1 ? u.money(num(x.land) / num(x.acres)) + "/ac land" : "", x.county].filter(Boolean).join(" · ")),
         h("div", { class: "chips small" }, whyChips(x).map(function (c) { return h("span", { class: "pill " + c[1] }, c[0]); }))));
-      M.dot(x.center[1], x.center[0], { layer: layer, color: i < 20 ? brass : M.cssVar("--navy-pin"), tip: (clean(x.owner) || addr || "Parcel") + " · " + (u.acresFmt(x.acres) || ""), onClick: function () { go(x); } });
+      (x.group || [x]).forEach(function (p) {
+        M.dot(p.center[1], p.center[0], { layer: layer, color: i < 20 ? brass : M.cssVar("--navy-pin"), tip: (clean(x.owner) || addr || "Parcel") + " · " + (u.acresFmt(p.acres) || "") + (multi ? " of " + u.acresFmt(x.acres) : ""), onClick: function () { selectOne(p); } });
+      });
     });
     if (rows.length > 150) box.append(h("div", { class: "sub" }, "Showing the top 150."));
     box.append(l);
     if (!rows.length) box.append(h("div", { class: "empty" }, "Nothing in this view matches. Loosen a filter or move the map."));
   }
-  function go(x) { M.map.setView([x.center[1], x.center[0]], 17); T.parcel.select(x.center[0], x.center[1], { fit: true }); }
+  function selectOne(x) { M.map.setView([x.center[1], x.center[0]], 17); T.parcel.select(x.center[0], x.center[1], { fit: true }); }
+  function go(x) {
+    if (!x.group || x.group.length < 2) return selectOne(x);
+    // An assemblage: show all of the owner's parcels, then open the largest
+    var b = L.latLngBounds(x.group.map(function (p) { return [p.center[1], p.center[0]]; }));
+    M.map.fitBounds(b, { maxZoom: 16, padding: [60, 60] });
+    var big = x.group.slice().sort(function (a, c) { return (num(c.acres) || 0) - (num(a.acres) || 0); })[0];
+    T.parcel.select(big.center[0], big.center[1], { fit: false });
+  }
 
   function renderOwner() {
     el.append(h("div", { class: "view-head" },
