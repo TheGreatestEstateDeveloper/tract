@@ -61,7 +61,7 @@
     var d = new Date(t);
     return isNaN(d) ? null : d;
   }
-  function dateFmt(v) { var d = toDate(v); if (!d || d.getFullYear() < 1800) return null; return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
+  function dateFmt(v) { var d = toDate(v); if (!d || d.getFullYear() < 1901) return null; return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
   function median(a) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }); var m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
   function clean(v) { if (v == null) return ""; var s = String(v).trim(); return /^(null|none|n\/a|0)$/i.test(s) ? "" : s; }
   function sq(s) { return String(s).replace(/'/g, "''"); }
@@ -391,15 +391,28 @@
       try {
         var j = await inEnvelope(layerUrl(cfg), env, { returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0003, resultRecordCount: 200 });
         (j.features || []).forEach(function (x) {
-          var c = ringsCentroid(x.geometry && x.geometry.rings);
-          var onParcel = x.geometry && x.geometry.rings ? pointInRings([r.lng, r.lat], x.geometry.rings) : false;
-          out.push({ cfg: cfg, a: x.attributes, m: mapAttrs(x.attributes, cfg.f), dist: c ? distMeters([r.lng, r.lat], c) : null, onParcel: onParcel, center: c });
+          var rings = x.geometry && x.geometry.rings;
+          var c = ringsCentroid(rings);
+          var onParcel = rings ? pointInRings([r.lng, r.lat], rings) : false;
+          var wide = false;
+          if (rings && rings[0]) { var xs = rings[0].map(function (p) { return p[0]; }); wide = (Math.max.apply(null, xs) - Math.min.apply(null, xs)) > 0.15; }
+          var m = mapAttrs(x.attributes, cfg.f);
+          if (!clean(m.number) && !clean(m.name) && !clean(m.alt) && !clean(m.desc) && !(cfg.f && cfg.f.any)) return; // blank zoning history rows
+          out.push({ cfg: cfg, a: x.attributes, m: m, dist: c ? distMeters([r.lng, r.lat], c) : null, onParcel: onParcel && !wide, wide: wide, center: c });
         });
       } catch (e) { /* one layer failing should not hide the others */ }
     }));
     if (my !== token) return;
-    out.sort(function (a, b) { return (b.onParcel - a.onParcel) || ((a.dist || 1e9) - (b.dist || 1e9)); });
-    r.cases = out;
+    // Merge the same case number reported by two layers (e.g. an application and its approved rezoning)
+    var byNum = {}, merged = [];
+    out.forEach(function (cs) {
+      var n = clean(cs.m.number).toUpperCase();
+      if (n && byNum[n]) { var keep = byNum[n]; Object.keys(cs.m).forEach(function (k) { if (!clean(keep.m[k]) && clean(cs.m[k])) keep.m[k] = cs.m[k]; }); keep.onParcel = keep.onParcel || cs.onParcel; return; }
+      if (n) byNum[n] = cs;
+      merged.push(cs);
+    });
+    merged.sort(function (a, b) { return (a.wide - b.wide) || (b.onParcel - a.onParcel) || ((a.dist || 1e9) - (b.dist || 1e9)); });
+    r.cases = merged;
     sec("cases", "done");
     renderReport();
   }
@@ -693,7 +706,7 @@
       clean(m.applicant) ? h("div", { class: "d" }, "Applicant: " + clean(m.applicant)) : null,
       meta.length ? h("div", { class: "m" }, meta.join(" · ")) : null,
       desc ? h("div", { class: "d" }, desc.length > 260 ? desc.slice(0, 257) + "…" : desc) : null,
-      h("div", { class: "d" }, cs.cfg.label + (cs.dist != null && !cs.onParcel ? " · " + milesFmt(cs.dist) : "")),
+      h("div", { class: "d" }, cs.cfg.label + (cs.wide ? " · covers a large area (countywide or district-wide)" : cs.dist != null && !cs.onParcel ? " · " + milesFmt(cs.dist) : "")),
       link && /^https?:/i.test(link) ? h("div", null, h("a", { href: link, target: "_blank", rel: "noopener" }, "Open case file ↗")) : null
     );
   }
