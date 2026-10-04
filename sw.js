@@ -1,5 +1,5 @@
 /* Tract service worker: keeps the app shell available offline. County data always comes live from the network. */
-var VERSION = "tract-v4";
+var VERSION = "tract-v9";
 var SHELL = ["./", "index.html", "css/app.css", "js/localities.js", "js/firms.js", "js/core.js", "js/map.js", "js/parcel.js", "js/search.js",
   "js/network.js", "js/activity.js", "js/sites.js", "js/saved.js", "js/settings.js", "js/app.js",
   "data/states.json", "data/va-localities.json", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png"];

@@ -58,6 +58,50 @@
     var s = side.getAttribute("data-state");
     side.setAttribute("data-state", s === "peek" ? "half" : s === "half" ? "full" : "peek");
   });
+  // Phone: drag either sheet up or down by its top (handle and heading), or from the body when it's scrolled to the top.
+  // On release it settles at the nearest height: peek, half or full.
+  function draggable(sheet, body, states) {
+    var startY = 0, startH = 0, dragging = false, moved = false, fromBody = false;
+    function avail() { return sheet.parentNode.getBoundingClientRect().height; }
+    function onStart(e) {
+      if (!phone() || e.touches.length !== 1) return;
+      var t = e.target;
+      var inHead = !!t.closest(".sheet-handle, .view-head, .report-head, .eyebrow, h2.title");
+      if (/INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+      fromBody = !inHead;
+      if (fromBody && body.scrollTop > 0) return;
+      startY = e.touches[0].clientY; startH = sheet.getBoundingClientRect().height; dragging = true; moved = false;
+    }
+    function onMove(e) {
+      if (!dragging) return;
+      var dy = e.touches[0].clientY - startY;
+      // From the body, only a downward pull at the top moves the sheet; upward is normal scrolling
+      if (fromBody && (dy < 0 || body.scrollTop > 0)) { if (!moved) dragging = false; return; }
+      if (!moved && Math.abs(dy) < 8) return;
+      moved = true;
+      e.preventDefault();
+      sheet.style.transition = "none";
+      sheet.style.height = Math.max(70, Math.min(avail() - 60, startH - dy)) + "px";
+    }
+    function onEnd() {
+      if (!dragging) return;
+      dragging = false;
+      sheet.style.transition = "";
+      if (!moved) return;
+      var frac = sheet.getBoundingClientRect().height / avail();
+      sheet.style.height = "";
+      var pick = frac < 0.28 ? states[0] : frac < 0.68 ? states[1] : states[2];
+      if (pick === "close") { if (sheet.id === "identify") T.parcel.close(); return; }
+      sheet.setAttribute("data-state", pick);
+    }
+    sheet.addEventListener("touchstart", onStart, { passive: true });
+    sheet.addEventListener("touchmove", onMove, { passive: false });
+    sheet.addEventListener("touchend", onEnd);
+    sheet.addEventListener("touchcancel", onEnd);
+  }
+  draggable(side, sideBody, ["peek", "half", "full"]);
+  draggable(u.$("identify"), u.$("identify-body"), ["close", "half", "full"]);
+
   // Laptop: the panel can fold away to give the map the whole width
   function setCollapsed(on) {
     side.classList.toggle("collapsed", on);
