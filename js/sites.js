@@ -30,7 +30,7 @@
 
   // ---------------------------------------------------------------- signals per parcel
   function flags(m, loc) {
-    var owner = [clean(m.owner), clean(m.owner2)].join(" ");
+    var owner = [clean(m.owner), clean(m.owner2)].join(" ").trim();
     var P = T.parcel;
     var sd = u.toDate(m.saleDate), yrs = sd && sd.getFullYear() > 1900 ? T.YEAR - sd.getFullYear() : null;
     var st = clean(m.mailState) || (clean(m.mailCity).match(/\b([A-Z]{2})\s*$/) || [])[1] || "";

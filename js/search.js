@@ -23,20 +23,28 @@
       iconName ? u.icon(iconName) : null, h("span", null, label, sub ? h("small", null, sub) : null));
   }
 
-  // Instant local matches while typing: companies, people, counties
-  function instant(q) {
-    if (q.length < 2 || /^(pin|gpin|parcel|id|owner)\s*[:#]/i.test(q) || /^-?\d+(\.\d+)?\s*[, ]\s*-?\d+/.test(q)) { if (!q) results.hidden = true; return; }
-    var n = u.norm(q), out = [];
+  // Instant local matches while typing: companies, people, counties. Enter opens the first one whose name
+  // starts with what was typed; otherwise Enter goes to the best address match.
+  var localHits = [];
+  function localMatches(q) {
+    var n = u.norm(q), hits = [];
     (T.network ? T.network.companies() : []).filter(function (c) { return u.norm(c.name + " " + (c.aliases || []).join(" ")).indexOf(n) >= 0; }).slice(0, 4).forEach(function (c) {
-      out.push(row(c.name, "Company" + (c.people && c.people.length ? " · " + c.people.length + " people you know" : ""), function () { T.show("network"); T.network.openCompany(c.id); }, "building"));
+      hits.push({ label: c.name, names: [c.name, c.short].concat(c.aliases || []), sub: "Company" + (c.people && c.people.length ? " · " + c.people.length + " people you know" : ""), icon: "building", go: function () { T.show("network"); T.network.openCompany(c.id); } });
     });
     (T.network ? T.network.people() : []).filter(function (p) { return u.norm(p.name + " " + (p.company || "")).indexOf(n) >= 0; }).slice(0, 4).forEach(function (p) {
-      out.push(row(p.name, [p.role || p.title, p.company].filter(Boolean).join(" · ") || "Person", function () { T.show("network"); T.network.openPerson(p.id); }, "network"));
+      hits.push({ label: p.name, names: [p.name], sub: [p.role || p.title, p.company].filter(Boolean).join(" · ") || "Person", icon: "network", go: function () { T.show("network"); T.network.openPerson(p.id); } });
     });
     var locs = M.localities();
     if (locs) locs.features.filter(function (f) { return u.norm(f.properties.name).indexOf(n) >= 0; }).slice(0, 3).forEach(function (f) {
-      out.push(row(f.properties.name, "County or city", function () { T.show("network"); T.network.openCounty(f.properties.fips); }, "pin"));
+      hits.push({ label: f.properties.name, names: [f.properties.name, f.properties.short], sub: "County or city", icon: "pin", go: function () { T.show("network"); T.network.openCounty(f.properties.fips); } });
     });
+    return hits;
+  }
+  function instant(q) {
+    localHits = [];
+    if (q.length < 2 || /^(pin|gpin|parcel|id|owner)\s*[:#]/i.test(q) || /^-?\d+(\.\d+)?\s*[, ]\s*-?\d+/.test(q)) { if (!q) results.hidden = true; return; }
+    localHits = localMatches(q);
+    var out = localHits.map(function (x) { return row(x.label, x.sub, x.go, x.icon); });
     u.clear(results);
     if (!out.length) { results.hidden = true; return; }
     out.forEach(function (x) { results.append(x); });
@@ -56,6 +64,9 @@
     if (pinM) return searchPin(pinM[2].trim());
     var ownM = q.match(/^owner\s*[:#]\s*(.+)$/i);
     if (ownM) { results.hidden = true; T.show("sites"); T.sites.ownerSearch([ownM[1].trim().toUpperCase()], "Owner search: " + ownM[1].trim()); return; }
+    var n = u.norm(q);
+    var top = (localHits.length ? localHits : localMatches(q)).filter(function (x) { return x.names.some(function (nm) { return u.norm(nm).indexOf(n) === 0; }); })[0];
+    if (top && !/^\d/.test(q)) { results.hidden = true; box.blur(); top.go(); return; }
     try {
       var url = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&maxLocations=6&outFields=Match_addr,Addr_type&countryCode=USA" +
         "&searchExtent=" + encodeURIComponent(JSON.stringify({ xmin: -83.7, ymin: 36.5, xmax: -75.2, ymax: 39.5, spatialReference: { wkid: 4326 } })) +
@@ -63,6 +74,12 @@
       var j = await (await fetch(url)).json();
       u.clear(results);
       var cands = (j.candidates || []).filter(function (c) { return c.score > 70; });
+      if (cands.length) {
+        // Go straight to the best match; the alternatives stay one tap away if the box is focused again
+        var best = cands[0].location;
+        results.hidden = true; box.blur();
+        M.map.setView([best.y, best.x], 18); T.parcel.select(best.x, best.y, { fit: true });
+      }
       cands.forEach(function (c) {
         results.append(row(c.address, c.attributes && c.attributes.Addr_type ? c.attributes.Addr_type.replace(/([a-z])([A-Z])/g, "$1 $2") : "", function () {
           var ll = c.location; M.map.setView([ll.y, ll.x], 18); T.parcel.select(ll.x, ll.y, { fit: true });

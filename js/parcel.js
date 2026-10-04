@@ -315,7 +315,7 @@
   var ENTITY_RE = /\b(LLC|L\.L\.C|INC|CORP|COMPANY|CO\b|LP|L\.P|LTD|PARTNERS|HOLDINGS|PROPERTIES|INVESTMENTS?|DEVELOPMENT|HOMES|BUILDERS?|REALTY|LAND)\b/i;
   function signalsFor(m, r) {
     var out = [];
-    var owner = [clean(m.owner), clean(m.owner2)].join(" ");
+    var owner = [clean(m.owner), clean(m.owner2)].join(" ").trim();
     if (ESTATE_RE.test(owner)) out.push({ t: "Estate or heirs", d: "Owner name reads as an estate, heirs or life estate. Often a family deciding what to do with the land.", cls: "gold" });
     else if (TRUST_RE.test(owner)) out.push({ t: "Held in trust", d: "Owner is a trust, often estate planning by an older owner.", cls: "gray" });
     var sd = toDate(m.saleDate);
@@ -490,10 +490,15 @@
       if (r.sections.cases !== "done") cb.append(u.loading("Checking county case files"));
       else if (!r.cases.length) cb.append(h("div", { class: "empty" }, "No cases within about three quarters of a mile."));
       else {
+        var shown = r.showAllCases ? r.cases : r.cases.filter(relevantCase);
+        var hiddenCount = r.cases.length - shown.length;
         var list = h("div", { class: "list" });
-        r.cases.slice(0, 14).forEach(function (cs) { list.append(caseItem(cs)); });
+        shown.slice(0, 14).forEach(function (cs) { list.append(caseItem(cs)); });
+        if (!shown.length) cb.append(h("div", { class: "empty" }, "No residential rezonings, plans or subdivisions nearby in the last 10 years."));
         cb.append(list);
-        if (r.cases.length > 14) cb.append(h("div", { class: "sub" }, (r.cases.length - 14) + " more within the search area. Turn on the Cases layer to see them on the map."));
+        if (shown.length > 14) cb.append(h("div", { class: "sub" }, (shown.length - 14) + " more within the search area. Turn on the Cases layer to see them on the map."));
+        if (hiddenCount > 0 || r.showAllCases) cb.append(h("div", { class: "btn-row" }, h("button", { type: "button", class: "btn small", onclick: function () { r.showAllCases = !r.showAllCases; render(); } },
+          r.showAllCases ? "Show residential cases from the last 10 years only" : "Show all " + r.cases.length + " cases (" + hiddenCount + " older or non-residential)")));
       }
       el.append(cb);
     }
@@ -546,6 +551,21 @@
         loc && loc.links && loc.links.gis ? u.extLink(loc.links.gis, "County GIS") : null),
       h("div", { class: "sub mono" }, r.lat.toFixed(6) + ", " + r.lng.toFixed(6) + (v.updated ? " · state layer updated " + (dateFmt(v.updated) || "") : ""))
     ));
+  }
+
+  // Default view of nearby cases: residential rezonings, plans and subdivisions from the last 10 years.
+  // Cases without a date are kept when their type reads residential (some counties don't publish dates).
+  var RES_RE = /rezon|\bREZ\b|ZMA|reclass|subdiv|\bSUB|\bplat\b|site plan|\bPOD\b|preliminary|residential|dwelling|\bunits\b|\bhomes\b|townho|single.family|\blots\b|\bPUD\b|\bPRD\b|\bPMR\b|planned|proffer|comp(rehensive)? plan|\bCPA\b|land use|construction plan|\bCPAP\b|\bR-?\d/i;
+  var NOT_RE = /variance|\bVAR\b|\bBZA\b|\bSPMI\b|\bsign\b|telecom|tower|antenna|historic|wetlands board|\bCBPA\b|home occupation|child care|kennel|church|school|daycare|day care|restaurant|retail|office|industrial|data center/i;
+  var HOUSING_RE = /residential|dwelling|\bunits\b|\bhomes\b|townho|single.family|\blots\b|subdiv/i;
+  function relevantCase(cs) {
+    var m = cs.m;
+    var d = toDate(m.date) || toDate(m.approved);
+    if (d && d < new Date(T.YEAR - 10, T.NOW.getMonth(), T.NOW.getDate())) return false;
+    var typeText = [clean(m.type), clean(m.devType), cs.cfg.label].join(" ");
+    var all = [typeText, clean(m.name), clean(m.alt), clean(m.desc), clean(m.toZone)].join(" ");
+    if (NOT_RE.test(all) && !HOUSING_RE.test(all)) return false;
+    return RES_RE.test(all);
   }
 
   function caseItem(cs) {

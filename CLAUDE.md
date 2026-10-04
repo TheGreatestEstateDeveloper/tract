@@ -70,5 +70,8 @@ A scheduled task runs Monday mornings (about 6:56 a.m. Eastern). It checks count
 - Counties file cases under project names, so matching cases to builders by name is weak. Hanover (developer name), Fairfax PLUS, Henrico agendas and Virginia Beach (applicant name) do name the people behind cases.
 - Case layers lag new filings by weeks.
 - Activity only sees counties whose case layers have a date field; Henrico's case points and Fauquier's 2023 file add little. Land purchases need owner and sale date fields, so Fairfax, Loudoun, Henrico, Stafford, Suffolk and Hanover purchases don't appear. Builders who buy through project LLCs aren't matched unless the LLC name contains the firm's name.
+- Lot prices in Activity: counties record a multi-lot deed's full price on every lot (checked in Chesterfield). Tract splits each deed (by book and page, else instrument, else date and price) across the lots the builder still owns. Lots already resold drop off the record, so per-lot prices are an upper bound.
+- Activity firm matches carry a strength: strong (applicant, developer, owner or representative), medium (case name), weak (description or a community name from a firm profile). Weak ones are hidden unless "Include weak matches" is on.
+- Nearby cases default to residential rezonings, plans and subdivisions from the last 10 years, chosen by keywords in each county's case types and descriptions; "Show all" lists everything.
 - Some county map servers are slow to draw (Prince William's zoning export has taken 9+ seconds); the map shows a "Drawing ..." note meanwhile.
 - The app name and logo are still provisional (the owner chose to decide later).

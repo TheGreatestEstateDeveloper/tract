@@ -38,6 +38,27 @@
     return null;
   }
 
+  // Which firm a filing belongs to, and how sure we are.
+  //  strong: the firm is the applicant, developer, owner or representative on the record
+  //  medium: the firm's name is in the case or project name
+  //  weak:   only the description mentions it, or the case sits in a community from the firm's profile
+  //          (a Chipotle at Goose Creek Village is not Lennar's), so these are hidden unless asked for
+  function matchFiling(m) {
+    var roles = [["applicant", "Applicant"], ["developer", "Developer"], ["caseOwner", "Owner"], ["rep", "Represented by"]];
+    for (var i = 0; i < roles.length; i++) {
+      var v = clean(m[roles[i][0]]), f = v && T.firmForText(v);
+      if (f) return { firm: f, strength: "strong", why: roles[i][1] + ": " + v };
+    }
+    var nm = [clean(m.name), clean(m.alt)].filter(Boolean).join(" · "), f2 = nm && T.firmForText(nm);
+    if (f2) return { firm: f2, strength: "medium", why: "Case name: " + nm };
+    var f3 = clean(m.desc) && T.firmForText(m.desc);
+    if (f3) return { firm: f3, strength: "weak", why: "Only the description mentions " + f3.short };
+    var pm = projectMatch([m.name, m.alt, m.desc].join(" "));
+    if (pm) return { firm: { key: pm.firm.key, name: pm.firm.name, short: shortName(pm.firm.name) }, strength: "weak", why: "In " + pm.project + ", a community in the " + shortName(pm.firm.name) + " profile" };
+    return null;
+  }
+  function firmOf(it) { return it.firm && !(it.match && it.match.strength === "weak" && !state.weak) ? it.firm : null; }
+
   function sinceDate() { var d = new Date(T.NOW); d.setDate(d.getDate() - (+state.days)); return d.toISOString().slice(0, 10); }
 
   // ---------------------------------------------------------------- loading
@@ -60,10 +81,8 @@
         var d = u.toDate(m.date);
         if (!d || d < cut || d > new Date(T.NOW.getTime() + 864e5 * 400)) return;
         var center = geo.geomCenter(x.geometry);
-        var text = [m.name, m.alt, m.applicant, m.developer, m.caseOwner, m.rep, m.desc].map(clean).join(" | ");
-        var firm = T.firmForText(text), via = firm ? "name" : null;
-        if (!firm) { var pm = projectMatch([m.name, m.alt, m.desc].join(" ")); if (pm) { firm = { key: pm.firm.key, name: pm.firm.name, short: shortName(pm.firm.name) }; via = "project " + pm.project; } }
-        out.push({ kind: "filing", fips: fips, county: loc.name, cfg: cfg, m: m, date: d, center: center, firm: firm, via: via,
+        var hit = matchFiling(m);
+        out.push({ kind: "filing", fips: fips, county: loc.name, cfg: cfg, m: m, date: d, center: center, firm: hit && hit.firm, match: hit,
           title: clean(m.name) || clean(m.alt) || clean(m.number) || "Case", who: clean(m.developer) || clean(m.applicant) || clean(m.caseOwner) || "" });
       });
     }));
@@ -82,36 +101,50 @@
     var pl = loc.parcel, f = pl && pl.f;
     if (!f || !f.owner || !f.saleDate || !loc.ownerSearch) return [];
     var likes = ownerPatterns().map(function (p) { return "UPPER(" + f.owner + ") LIKE '%" + u.sq(p) + "%'"; }).join(" OR ");
-    var fields = ["owner", "acres", "areaSqft", "address", "id", "salePrice", "saleDate", "zoningCode", "subdivision"].map(function (k) { return f[k]; }).filter(Boolean);
+    var fields = ["owner", "acres", "areaSqft", "address", "id", "salePrice", "saleDate", "zoningCode", "subdivision", "deedBook", "deedPage", "instrument", "deed", "grantor"].map(function (k) { return f[k]; }).filter(Boolean);
     var params = { where: "(" + likes + ") AND " + f.saleDate + " >= DATE '" + since + "'", outFields: fields.join(","), returnGeometry: true, outSR: 4326, maxAllowableOffset: 0.0008, resultRecordCount: 1000 };
     var j;
     try { j = await gis.ags(pl.url, params, { timeout: 30000 }); }
     catch (e) { try { j = await gis.ags(pl.url, Object.assign({}, params, { where: likes }), { timeout: 30000 }); } catch (e2) { return []; } }
     var cut = u.toDate(since);
-    // Builders usually buy finished lots one at a time; roll them up by firm and subdivision (or by area when there's no subdivision name)
-    var groups = {};
+    // Counties repeat a multi-lot deed's full price on every lot it covers (Chesterfield checked: five Watermark lots each
+    // show the same $770,270 deed). Identify each deed (book and page, else instrument, else date and price), count its
+    // lots, and give each lot an equal share. That keeps totals right even when one deed spans two subdivisions.
+    var lots = [], deedLots = {};
     (j.features || []).forEach(function (x) {
       var m = gis.mapAttrs(x.attributes, f);
       var d = u.toDate(m.saleDate);
       if (!d || d < cut) return;
       var firm = T.firmForText(m.owner);
       if (!firm) return;
-      var c = geo.ringsCentroid(x.geometry && x.geometry.rings);
-      var sub = clean(m.subdivision);
-      var key = firm.key + "|" + (sub ? sub.toUpperCase() : c ? c[0].toFixed(2) + "," + c[1].toFixed(2) : clean(m.id));
-      var g = groups[key] || (groups[key] = { kind: "land", fips: fips, county: loc.name, firm: firm, via: "owner name", count: 0, price: 0, acres: 0, first: d, date: d, center: c, sub: sub, owners: {}, deeds: {}, m: m });
+      var deedKey = clean(m.deedBook) && clean(m.deedPage) ? "bp|" + clean(m.deedBook) + "|" + clean(m.deedPage)
+        : clean(m.instrument) ? "in|" + clean(m.instrument) : clean(m.deed) ? "d|" + clean(m.deed) : "dp|" + d.toISOString().slice(0, 10) + "|" + (num(m.salePrice) || 0);
+      deedLots[deedKey] = (deedLots[deedKey] || 0) + 1;
+      lots.push({ m: m, d: d, firm: firm, deedKey: deedKey, c: geo.ringsCentroid(x.geometry && x.geometry.rings) });
+    });
+    // Builders usually buy finished lots in batches; roll them up by firm and subdivision (or by area when there's no subdivision name)
+    var groups = {};
+    lots.forEach(function (l) {
+      var m = l.m, d = l.d, sub = clean(m.subdivision);
+      var key = l.firm.key + "|" + (sub ? sub.toUpperCase() : l.c ? l.c[0].toFixed(2) + "," + l.c[1].toFixed(2) : clean(m.id));
+      var g = groups[key] || (groups[key] = { kind: "land", fips: fips, county: loc.name, firm: l.firm, via: "owner", match: { strength: "strong", why: "Buyer on the county record: " + clean(m.owner) },
+        count: 0, price: 0, priced: 0, acres: 0, first: d, date: d, center: l.c, sub: sub, owners: {}, sellers: {}, deeds: {}, m: m });
       g.count++;
-      // One deed often covers several lots and counties repeat its full price on each; count each price once per date
-      var deedKey = d.toISOString().slice(0, 10) + "|" + (num(m.salePrice) || 0);
-      if (!g.deeds[deedKey]) { g.deeds[deedKey] = true; g.price += num(m.salePrice) || 0; }
+      var p = num(m.salePrice) || 0;
+      if (p > 0) { g.price += p / deedLots[l.deedKey]; g.priced++; }
+      g.deeds[l.deedKey] = true;
       g.acres += num(m.acres) || 0;
       if (d > g.date) { g.date = d; g.m = m; }
       if (d < g.first) g.first = d;
       g.owners[clean(m.owner)] = true;
+      if (clean(m.grantor)) g.sellers[clean(m.grantor)] = true;
     });
     return Object.keys(groups).map(function (k) {
       var g = groups[k];
+      g.deedCount = Object.keys(g.deeds).length;
+      g.perLot = g.priced ? g.price / g.priced : null;
       g.who = Object.keys(g.owners).slice(0, 2).join(", ");
+      g.seller = Object.keys(g.sellers).slice(0, 2).join(", ");
       g.title = g.count > 1
         ? g.count + " lots" + (g.sub ? " in " + g.sub : "") + (g.price ? " · " + u.money(g.price) : "")
         : (g.price ? u.money(g.price) : "Transfer") + (g.acres ? " · " + u.acresFmt(g.acres) : "") + (g.sub ? " · " + g.sub : "");
@@ -143,8 +176,9 @@
     return (items || []).filter(function (it) {
       if (state.kind !== "all" && it.kind !== state.kind) return false;
       if (state.fips && it.fips !== state.fips) return false;
-      if (state.firm && (!it.firm || it.firm.key !== state.firm)) return false;
-      if (!state.firm && state.who === "matched" && !it.firm) return false;
+      var fm = firmOf(it);
+      if (state.firm && (!fm || fm.key !== state.firm)) return false;
+      if (!state.firm && state.who === "matched" && !fm) return false;
       return true;
     });
   }
@@ -180,14 +214,15 @@
         [["all", "Everything"], ["filing", "Rezonings and plans"], ["land", "Land purchases"]].map(function (k) {
           return h("button", { type: "button", class: "chip", "aria-pressed": state.kind === k[0] ? "true" : "false", onclick: function () { state.kind = k[0]; render(); } }, k[1]);
         }),
-        !state.firm ? h("button", { type: "button", class: "chip", "aria-pressed": state.who === "all" ? "true" : "false", onclick: function () { state.who = state.who === "all" ? "matched" : "all"; render(); } }, "Include unmatched filings") : null)));
+        !state.firm ? h("button", { type: "button", class: "chip", "aria-pressed": state.who === "all" ? "true" : "false", onclick: function () { state.who = state.who === "all" ? "matched" : "all"; render(); } }, "Include unmatched filings") : null,
+        h("button", { type: "button", class: "chip", "aria-pressed": state.weak ? "true" : "false", title: "Matches only from a description or a community name", onclick: function () { state.weak = !state.weak; render(); } }, "Include weak matches"))));
 
     statusEl = h("div", { class: "block" });
     el.append(statusEl);
     if (!items) { renderStatus(); drawMap([]); return; }
     var list = filtered();
     var firmsIn = {};
-    list.forEach(function (it) { if (it.firm) firmsIn[it.firm.key] = (firmsIn[it.firm.key] || 0) + (it.count || 1); });
+    list.forEach(function (it) { var fm = firmOf(it); if (fm) firmsIn[fm.key] = (firmsIn[fm.key] || 0) + (it.count || 1); });
     var lots = list.filter(function (i) { return i.kind === "land"; }).reduce(function (s, i) { return s + (i.count || 1); }, 0);
     statusEl.append(h("div", { class: "stats" },
       u.stat(String(list.filter(function (i) { return i.kind === "filing"; }).length), "Filings"),
@@ -199,7 +234,7 @@
       // Group by firm (or by county when one firm is selected)
       var groups = {};
       list.forEach(function (it) {
-        var g = state.firm ? it.county : it.firm ? shortName(it.firm.name) : "Not matched to a firm";
+        var g = state.firm ? it.county : firmOf(it) ? shortName(firmOf(it).name) : "Not matched to a firm";
         (groups[g] = groups[g] || []).push(it);
       });
       Object.keys(groups).sort(function (a, b) { return (a === "Not matched to a firm") - (b === "Not matched to a firm") || groups[b].length - groups[a].length; }).forEach(function (g) {
@@ -224,6 +259,7 @@
       list.slice(0, 25).forEach(function (it) { recent.append(itemEl(it)); });
       if (list.length) el.append(h("section", { class: "block" }, h("h3", { class: "sec" }, "Latest"), recent));
     }
+    el.append(h("p", { class: "sub" }, "Lot prices: counties record a multi-lot deed's full price on each lot, so Tract splits each deed across the lots the builder still owns. Lots already resold drop off the record, so per-lot prices are an upper bound."));
     el.append(h("p", { class: "sub" }, "Matching uses names in the county record (applicant, developer, owner, project). Builders often file through project LLCs, engineers or attorneys, so treat this as a floor, not a full count. Counties without dated case files aren't included."));
     drawMap(list);
   }
@@ -239,10 +275,12 @@
       if (it.kind === "land") T.parcel.select(it.center[0], it.center[1], { fit: true });
     } },
       h("div", { class: "t" }, it.kind === "land" ? h("span", { class: "pill brass" }, it.count > 1 ? "Lots" : "Land") : h("span", { class: "pill blue" }, clean(m.number) || "Case"), it.title,
-        it.firm && !state.firm ? h("span", { class: "pill gray" }, it.firm.short) : null),
+        firmOf(it) && !state.firm ? h("span", { class: "pill gray" }, firmOf(it).short) : null),
       it.who ? h("div", { class: "d" }, it.who) : null,
+      it.kind === "land" && (it.perLot || it.seller) ? h("div", { class: "d" }, [it.perLot ? "At most " + u.money(it.perLot) + " per lot" + (it.deedCount > 1 ? " across " + it.deedCount + " deeds" : "") : "", it.seller ? "from " + it.seller : ""].filter(Boolean).join(" · ")) : null,
       h("div", { class: "m" }, meta.join(" · ")),
-      it.kind === "filing" && clean(m.desc) ? h("div", { class: "d" }, clean(m.desc).slice(0, 180) + (clean(m.desc).length > 180 ? "…" : "")) : null);
+      it.kind === "filing" && clean(m.desc) ? h("div", { class: "d" }, clean(m.desc).slice(0, 180) + (clean(m.desc).length > 180 ? "…" : "")) : null,
+      it.match && firmOf(it) ? h("div", { class: "why" + (it.match.strength === "weak" ? " weak" : "") }, "Why " + firmOf(it).short + ": " + it.match.why) : null);
     return b;
   }
 
@@ -253,7 +291,7 @@
     list.forEach(function (it) {
       if (!it.center) return;
       M.dot(it.center[1], it.center[0], { layer: layer, color: it.kind === "land" ? brass : blue, cls: it.kind,
-        tip: (it.firm ? it.firm.short + " · " : "") + it.title + " · " + u.dateFmt(it.date),
+        tip: (firmOf(it) ? firmOf(it).short + " · " : "") + it.title + " · " + u.dateFmt(it.date),
         onClick: function () {
           M.map.setView([it.center[1], it.center[0]], Math.max(M.map.getZoom(), 16));
           if (it.kind === "land") T.parcel.select(it.center[0], it.center[1], { fit: true });

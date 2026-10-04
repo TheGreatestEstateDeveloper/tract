@@ -221,7 +221,8 @@ a { color: var(--accent); }
   .side[data-state="full"] { height: calc(100% - var(--bar-h) - env(safe-area-inset-top, 0px) - 70px); }
   .side-collapse { display: none; }
   .side.collapsed { transform: none; }
-  .sheet-handle { display: flex; justify-content: center; border: 0; background: none; padding: 9px 0 3px; cursor: pointer; flex: none; width: 100%; }
+  .sheet-handle { display: flex; justify-content: center; border: 0; background: none; padding: 12px 0 8px; cursor: grab; flex: none; width: 100%; touch-action: none; }
+  .view-head, .report-head { touch-action: pan-x; }
   .sheet-handle span { width: 44px; height: 5px; border-radius: 3px; background: var(--line); }
   .view { padding: 6px 16px 28px; gap: 16px; }
   .stage, .app.side-collapsed .stage { left: 0; bottom: 0; }
@@ -319,6 +320,8 @@ h3.sec .count { margin-left: auto; font-family: var(--font-data); font-size: 12p
 .item .m { font-family: var(--font-data); font-size: 12px; color: var(--muted); }
 .item.static { cursor: default; }
 button.item:hover .t { color: var(--accent); }
+.why { font-size: 12px; color: var(--accent); }
+.why.weak { color: var(--warn); }
 .score { margin-left: auto; font-family: var(--font-data); font-size: 12px; color: var(--brass-ink); border: 1px solid var(--brass); border-radius: 6px; padding: 0 6px; }
 
 .empty { color: var(--muted); font-size: 14px; padding: 6px 0; }
