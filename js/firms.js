@@ -4,7 +4,7 @@
  * county rezoning/land-use case names, applicants and descriptions.
  */
 window.TRACT_FIRMS = {
-  updated: "Oct 4, 2026",
+  updated: "Oct 5, 2026",
   firms: [
     // ---------------- Public homebuilders ----------------
     {
@@ -36,13 +36,15 @@ window.TRACT_FIRMS = {
         { name: "Avonmore", locality: "Ashburn, Loudoun", detail: "Boutique single-family community", status: "Selling" },
         { name: "Cedar Terrace", locality: "South Riding (Chantilly), Loudoun", detail: "Townhomes and condos; opening spring 2026", status: "Opening" },
         { name: "Parkside Village", locality: "Aldie, Loudoun", detail: "Model collections announced" },
-        { name: "Riverfield Estates", locality: "Leesburg, Loudoun", detail: "Announced as coming soon" }
+        { name: "Riverfield Estates", locality: "Leesburg, Loudoun", detail: "Announced as coming soon" },
+        { name: "Toll Brothers at West Park", locality: "Brambleton (Ashburn), Loudoun", detail: "Single-family homes near Ryan Road and Hillside Farm Drive, from the upper $700s", status: "Coming soon" }
       ],
       ownerPatterns: ["TOLL BROTHERS", "TOLL VA", "TOLL LAND"], casePatterns: ["TOLL BROTHERS"],
       sources: [
         { label: "Toll Brothers Form 10-K, fiscal 2025 (SEC)", url: "https://www.sec.gov/Archives/edgar/data/794170/000079417025000112/tol-20251031.htm" },
         { label: "Toll Brothers: Avonmore in Ashburn now open", url: "https://www.tollbrothers.com/blog/avonmore-ashburn-virginia-now-open" },
-        { label: "Toll Brothers: Cedar Terrace coming to Chantilly (Dec 2025)", url: "https://www.barchart.com/story/news/36672785/new-toll-brothers-luxury-home-community-coming-soon-to-chantilly-virginia" }
+        { label: "Toll Brothers: Cedar Terrace coming to Chantilly (Dec 2025)", url: "https://www.barchart.com/story/news/36672785/new-toll-brothers-luxury-home-community-coming-soon-to-chantilly-virginia" },
+        { label: "Toll Brothers: West Park in Ashburn coming soon (2026)", url: "https://www.tollbrothers.com/blog/toll-brothers-at-west-park-ashburn-virginia-coming-soon" }
       ]
     },
     {
@@ -54,11 +56,12 @@ window.TRACT_FIRMS = {
       strategy: "Horton leans on its majority-owned lot developer, Forestar, for finished lots: Forestar sold 14,240 lots in fiscal 2025 and 83% of them went to D.R. Horton. Expect Horton to favor option contracts and finished-lot deals over holding raw land.",
       numbers: [["Homes closed, FY2025", "84,863"], ["Average closing price", "about $370,400"], ["Forestar lots sold, FY2025", "14,240 (83% to D.R. Horton)"]],
       people: [],
-      projects: [{ name: "Sierra Ridge", locality: "King George", detail: "Listed under the Northern Virginia division" }],
+      projects: [{ name: "Sierra Ridge", locality: "King George", detail: "Listed under the Northern Virginia division" }, { name: "Goochland subdivision", locality: "Goochland", detail: "Nearly 200 homes planned (reported July 2026)" }],
       ownerPatterns: ["D R HORTON", "DR HORTON", "D.R. HORTON", "FORESTAR"], casePatterns: ["HORTON", "FORESTAR"],
       sources: [
         { label: "D.R. Horton Form 10-K, fiscal 2025 (SEC)", url: "https://www.sec.gov/Archives/edgar/data/882184/000088218425000081/dhi-20250930.htm" },
-        { label: "D.R. Horton: Virginia", url: "https://www.drhorton.com/va" }
+        { label: "D.R. Horton: Virginia", url: "https://www.drhorton.com/va" },
+        { label: "Richmond BizSense: D.R. Horton to build nearly 200 homes in Goochland (Jul 2026)", url: "https://richmondbizsense.com/2026/07/06/d-r-horton-on-deck-to-build-nearly-200-home-subdivision-in-goochland/" }
       ]
     },
     {
@@ -125,7 +128,7 @@ window.TRACT_FIRMS = {
       hq: "Jacksonville, Florida", ticker: "DFH", website: "https://dreamfindershomes.com/new-homes/va/dc-metro-virginia/",
       vaOffices: "D.C. Metro division",
       summary: "Dream Finders' D.C. Metro Virginia lineup includes Sunset Station in Reston (from about $1.02M) and South Springs in Chantilly (coming soon, from the upper $500s).",
-      strategy: "Dream Finders is known for an asset-light model, controlling most lots through options and land bank arrangements and growing by acquiring regional builders.",
+      strategy: "Dream Finders is known for an asset-light model, controlling most lots through options and land bank arrangements and growing by acquiring regional builders. In August 2026 it agreed to buy Beazer Homes for about $2.2 billion in cash, a deal expected to close in the fourth quarter of 2026 that would make it the sixth largest U.S. builder.",
       numbers: [],
       people: [],
       projects: [
@@ -133,18 +136,21 @@ window.TRACT_FIRMS = {
         { name: "South Springs", locality: "Chantilly", status: "Coming soon" }
       ],
       ownerPatterns: ["DREAM FINDERS"], casePatterns: ["DREAM FINDERS"],
-      sources: [{ label: "Dream Finders: D.C. Metro Virginia", url: "https://dreamfindershomes.com/new-homes/va/dc-metro-virginia/" }]
+      sources: [
+        { label: "Dream Finders: D.C. Metro Virginia", url: "https://dreamfindershomes.com/new-homes/va/dc-metro-virginia/" },
+        { label: "Business Wire: Dream Finders Homes to acquire Beazer Homes (Aug 2026)", url: "https://secure.businesswire.com/news/home/20260806292783/en/Dream-Finders-Homes-to-Acquire-Beazer-Homes-Creating-Sixth-Largest-U.S.-Homebuilder" }
+      ]
     },
     {
       key: "taylormorrison", name: "Taylor Morrison", aliases: ["Taylor Morrison", "Yardly"], type: "public",
-      tagline: "National builder with a build-to-rent brand (Yardly); limited Virginia footprint",
-      hq: "Scottsdale, Arizona", ticker: "TMHC", website: "https://www.taylormorrison.com",
+      tagline: "National builder owned by Berkshire Hathaway since July 2026; limited Virginia footprint",
+      hq: "Scottsdale, Arizona", ticker: "", website: "https://www.taylormorrison.com",
       vaOffices: "No Virginia division listed",
-      summary: "Taylor Morrison doesn't list a Virginia division, so county records here will rarely show it. Its Yardly brand builds for-rent single-family communities in Sun Belt markets.",
+      summary: "Taylor Morrison doesn't list a Virginia division, so county records here will rarely show it. Berkshire Hathaway completed its all-cash purchase of the company in July 2026, so its shares no longer trade. Its Yardly brand builds for-rent single-family communities in Sun Belt markets.",
       strategy: "",
       numbers: [], people: [], projects: [],
       ownerPatterns: ["TAYLOR MORRISON"], casePatterns: ["TAYLOR MORRISON"],
-      sources: []
+      sources: [{ label: "Business Wire: Berkshire Hathaway completes acquisition of Taylor Morrison (Jul 2026)", url: "https://secure.businesswire.com/news/home/20260724814103/en/Berkshire-Hathaway-Completes-Acquisition-of-Taylor-Morrison" }]
     },
 
     // ---------------- Regional private builders ----------------
@@ -153,7 +159,7 @@ window.TRACT_FIRMS = {
       tagline: "Reston builder owned by Daiwa House, growing fast through acquisitions",
       hq: "Reston, Virginia", ticker: "", website: "https://www.stanleymartin.com",
       vaOffices: "Reston headquarters; Northern Virginia, Fredericksburg and Richmond divisions",
-      summary: "Founded in 1966 and owned by Japan's Daiwa House Group since 2017, Stanley Martin says it has built more than 40,000 homes across 18 metro areas in seven states. It bought Windsor Homes' assets in late 2025 and closed a $221 million all-cash purchase of United Homes Group in May 2026, extending it across the Southeast.",
+      summary: "Founded in 1966 and owned by Japan's Daiwa House Group since 2017, Stanley Martin says it has built more than 40,000 homes across 18 metro areas in seven states. It bought Windsor Homes' assets in late 2025 and closed a $221 million all-cash purchase of United Homes Group in May 2026, extending it across the Southeast. In July 2026 it agreed to buy Florida's Holiday Builders, adding more than 40 communities and about 10,600 controlled lots.",
       strategy: "Stanley Martin develops land as well as building homes. Its sale of a 190-acre Prince William County property to Amazon Data Services for about $700 million shows how data center demand can reprice residential land it controls.",
       numbers: [["Homes built since 1966", "40,000+"], ["Markets", "18 metro areas, 7 states"]],
       people: [{ name: "Steven B. Alloy", title: "President and CEO" }],
@@ -161,7 +167,8 @@ window.TRACT_FIRMS = {
       ownerPatterns: ["STANLEY MARTIN"], casePatterns: ["STANLEY MARTIN"],
       sources: [
         { label: "Virginia Business: Steven B. Alloy (2026)", url: "https://virginiabusiness.com/real-estate-2026-steven-b-alloy/" },
-        { label: "HousingWire: Stanley Martin acquires UHG for $221M", url: "https://www.housingwire.com/articles/stanley-martin-acquires-uhg-221m/" }
+        { label: "HousingWire: Stanley Martin acquires UHG for $221M", url: "https://www.housingwire.com/articles/stanley-martin-acquires-uhg-221m/" },
+        { label: "Builder: Stanley Martin acquires Holiday Builders (Jul 2026)", url: "https://www.builderonline.com/money/ma/stanley-martin-homes-acquires-florida-based-holiday-builders/" }
       ]
     },
     {
@@ -390,12 +397,15 @@ window.TRACT_FIRMS = {
       tagline: "Reston engineering firm being taken private for about $1 billion",
       hq: "Reston, Virginia", ticker: "BWMN", website: "https://www.bowman.com",
       vaOffices: "Reston headquarters and offices statewide",
-      summary: "Bowman provides engineering and infrastructure consulting with more than 2,500 employees in about 100 offices and roughly $490 million of 2025 gross contract revenue. In August 2026 it agreed to be acquired by Bernhard Capital Partners for $43 a share (about $1 billion), expected to close in late 2026 or early 2027. Founder and CEO Gary Bowman plans to retire at year end.",
+      summary: "Bowman provides engineering and infrastructure consulting with more than 2,500 employees in about 100 offices and roughly $490 million of 2025 gross contract revenue. In August 2026 it agreed to be acquired by Bernhard Capital Partners for $43 a share (about $1 billion), expected to close in late 2026 or early 2027. Stockholders vote on the sale at a special meeting on November 4, 2026. Founder and CEO Gary Bowman plans to retire at year end.",
       strategy: "Land development engineering for many of the region's builders; its name appears on site plans and rezoning files.",
       numbers: [["Employees", "2,500+"], ["Gross contract revenue, 2025", "about $490M"]],
       people: [{ name: "Gary Bowman", title: "Founder and CEO (retiring end of 2026)" }], projects: [],
       ownerPatterns: [], casePatterns: ["BOWMAN"],
-      sources: [{ label: "Virginia Business: Bowman Consulting to be acquired for $1B (Aug 2026)", url: "https://virginiabusiness.com/bowman-consulting-to-be-acquired-for-1b/" }]
+      sources: [
+        { label: "Virginia Business: Bowman Consulting to be acquired for $1B (Aug 2026)", url: "https://virginiabusiness.com/bowman-consulting-to-be-acquired-for-1b/" },
+        { label: "SEC: Bowman definitive merger proxy (Oct 5, 2026)", url: "https://www.sec.gov/Archives/edgar/data/0001847590/000114036126038492/ny20081613x2_defm14a.htm" }
+      ]
     }
   ]
 };
